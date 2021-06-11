@@ -1,46 +1,54 @@
-# Getting Started with Create React App
+# SQWorkflowEngine
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Documentation
 
-## Available Scripts
+_TBD_
 
-In the project directory, you can run:
+## Contributing
 
-### `npm start`
+When you make changes to this repo, you must adhere to the [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/#summary) standard.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+If you are unfamiliar with writing [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/#summary) style messages, you can use the [commitizen](https://commitizen.github.io/cz-cli/) to guide you through creating the commit message
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```sh
+git add .
+npm run commit
+```
 
-### `npm test`
+The commit will be validated through a linter pre-commit hook and will reject any commit messages that do not properly adhere to the convention.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+TBD _~~[Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/#summary) formatted messages are required for proper versioning and automatic generation of release notes / CHANGELOG. Currently, only `feat` and `fix` will bump the version.~~_
 
-### `npm run build`
+Your first commit should use the type relevant to what you're working on, e.g., `feat` or `fix`, then if you receive feedback in a PR requiring another commit, choose `chore`; this will prevent those extra commits cluttering the changelog.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+For **BREAKING CHANGES** Type a brief description of the breaking change when asked if there is a breaking change. Otherwise, press the `ENTER` key to skip over the breaking change optional question.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+-   A breaking change will cause a `MAJOR` SemVer bump. Ex: 3.0.5 -> 4.0.0
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Consuming
 
-### `npm run eject`
+-   `> npm install @selectquotelabs/sqworkflowengine`
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+### Initial Setup
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+_Coming Soon..._
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## Development
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+To get started first install the projects dependencies
 
-## Learn More
+```sh
+$ npm install
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+It's recommended to use the Node version specified in the `.nvmrc` file. If you have [nvm](https://github.com/nvm-sh/nvm#about) installed execute the following terminal command:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```sh
+$ nvm use
+```
+
+> Note: If you run `nvm use` and don't have that version of Node installed, `nvm` will tell you how to install it
+
+## Versioning
+
+TBD _~~We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://bitbucket.org/SelectQuote/scplus-shared-components/src/master/).~~_
