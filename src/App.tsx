@@ -1,5 +1,5 @@
 function App() {
-	return <div>Hello SQWorkflowEngine</div>
+  return <div>Hello SQWorkflowEngine</div>;
 }
 
-export default App
+export default App;
