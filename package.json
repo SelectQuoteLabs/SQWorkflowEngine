@@ -41,16 +41,21 @@
 		"vite": "^2.3.8",
 		"vite-react-jsx": "^1.1.1"
 	},
-	"browserslist": {
-		"production": [
-			">0.2%",
-			"not dead",
-			"not op_mini all"
-		],
-		"development": [
-			"last 1 chrome version",
-			"last 1 firefox version",
-			"last 1 safari version"
-		]
-	}
+	"commitlint": {
+		"rules": {
+			"type-enum": [
+				2,
+				"always",
+				[
+					"feat",
+					"fix",
+					"docs",
+					"chore",
+					"refactor",
+					"test",
+					"ci"
+				]
+			]
+		}
+	},
 }
