@@ -3,6 +3,7 @@ import { Moment } from 'moment';
 
 import { Action } from 'types/actions';
 import { ConditionalActions } from 'types/evaluations';
+import { MultipleChoiceOptionValue } from 'types/questions';
 
 export interface QuestionMachineContext {
   id: string;
@@ -11,20 +12,31 @@ export interface QuestionMachineContext {
   initialRequired: boolean;
   onCompleteConditionalActions: ConditionalActions[] | null;
   initialValue: string;
-  value?: string | Moment;
+  value?: QuestionValue;
   actionsQueue?: ActionsQueueItem[];
   isKnockout?: boolean;
   knockoutMessage?: string | null;
+  options: MultipleChoiceOptionValue[] | null;
 }
 
+export type QuestionValue = string | Moment;
+
 export type QuestionMachineEvent =
+  | {
+      type: 'PARSE_CONDITIONAL_ACTIONS';
+    }
   | {
       type: 'UPDATE_VALUE';
       value: string | Moment;
     }
+  | {
+      type: 'UPDATE_PARENT_WITH_VALUE';
+    }
+  | {
+      type: 'UPDATE_OPTIONS';
+      options: MultipleChoiceOptionValue[] | null;
+    }
   | { type: 'EVALUATE_COMPARISON' }
-  | { type: 'UPDATE_PARENT' }
-  | { type: 'SET_KNOCKOUT' }
   | { type: 'HIDE' }
   | { type: 'SHOW' }
   | { type: 'NOT_REQUIRED' }
@@ -45,6 +57,7 @@ export type QuestionMachineState =
         | { initialized: { visibility: 'invisible' } }
         | { initialized: { visibility: 'visible' } }
         | { initialized: { visibility: { visible: 'idle' } } }
+        | { initialized: { visibility: { visible: 'checkingInitialValues' } } }
         | {
             initialized: {
               visibility: { visible: 'evaluatingConditionalActions' };

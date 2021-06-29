@@ -34,6 +34,7 @@ const questionMachine = createMachine<
       actionsQueue: [],
       initialValue: '',
       value: '',
+      options: null,
     },
     states: {
       initializing: {
@@ -103,8 +104,20 @@ const questionMachine = createMachine<
                     id: 'idle',
                     on: {
                       UPDATE_VALUE: {
-                        target: 'evaluatingConditionalActions',
                         actions: ['updateValue'],
+                      },
+                      UPDATE_PARENT_WITH_VALUE: {
+                        actions: ['updateParentWithValue'],
+                      },
+                      PARSE_CONDITIONAL_ACTIONS: {
+                        target: 'evaluatingConditionalActions',
+                      },
+                      UPDATE_OPTIONS: {
+                        actions: [
+                          assign({
+                            options: (_context, event) => event.options,
+                          }),
+                        ],
                       },
                     },
                   },
@@ -141,23 +154,18 @@ const questionMachine = createMachine<
                       },
                       settingKnockout: {
                         id: 'settingKnockout',
-                        entry: actions.send({ type: 'SET_KNOCKOUT' }),
-                        on: {
-                          SET_KNOCKOUT: {
+                        always: [
+                          {
                             target: 'updatingParent',
                             actions: ['setKnockoutState'],
                           },
-                        },
+                        ],
                       },
                       updatingParent: {
                         id: 'updatingParentStep',
-                        entry: actions.send({ type: 'UPDATE_PARENT' }),
-                        on: {
-                          UPDATE_PARENT: {
-                            target: 'complete',
-                            actions: ['updateParentStep'],
-                          },
-                        },
+                        always: [
+                          { target: 'complete', actions: ['updateParentStep'] },
+                        ],
                       },
                       complete: {
                         type: 'final',
@@ -212,6 +220,11 @@ const questionMachine = createMachine<
           return event.value;
         },
       }) as any,
+      updateParentWithValue: sendParent((context) => ({
+        type: 'RECEIVE_VALUE_UPDATE',
+        questionID: context.questionID,
+        value: context.value ? String(context.value) : '',
+      })),
       /**
        * Here we're taking the `onCompleteConditionalActions` and determining what the actions should do based on the evaluation of the question's
        * value. To the `actionsQueue` it assigns the evaluation result and the conditional actions that should be performed based on that evaluation.
@@ -222,15 +235,13 @@ const questionMachine = createMachine<
           return onCompleteConditionalActions?.reduce(
             (
               acc: { evaluationResult: boolean; actions: Action[] }[],
-              conditionalAction
+              conditionalAction,
             ) => {
               const { evaluation, actions } = conditionalAction;
               if (evaluation.evaluationType === EvaluationTypes.GROUP) {
                 /** If it's a group evaluation we need to check all of the evalations in the group based on the `logicalOperator` */
-                const {
-                  evaluations: evaluationsArray,
-                  logicalOperator,
-                } = evaluation;
+                const { evaluations: evaluationsArray, logicalOperator } =
+                  evaluation;
                 /** Evaluate all comparison based on the `value` */
                 const allEvaluatedComparisons = evaluationsArray.reduce(
                   (acc, evaluation) => {
@@ -240,7 +251,7 @@ const questionMachine = createMachine<
                     acc.push(hasPassedEvaluation);
                     return acc;
                   },
-                  [] as boolean[]
+                  [] as boolean[],
                 );
                 /** Determine if all evaluations have passed based on the `logicalOperator` */
                 const hasPassedEvaluations = evaluationOperatorMap[
@@ -269,7 +280,7 @@ const questionMachine = createMachine<
               }
               return acc;
             },
-            []
+            [],
           );
         },
       }),
@@ -280,16 +291,16 @@ const questionMachine = createMachine<
       setKnockoutState: assign((context) => {
         const actionInQueue = findActionInQueue(
           context.actionsQueue,
-          ActionTypes.FAILWORKFLOW
+          ActionTypes.FAILWORKFLOW,
         ) as ActionsQueueItem;
         const { actions, evaluationResult } = actionInQueue;
         const failAction = actions.find(
           (action): action is FailWorkflowAction =>
-            action.actionType === ActionTypes.FAILWORKFLOW
+            action.actionType === ActionTypes.FAILWORKFLOW,
         );
         const message = evaluationResult ? failAction?.displayText : null;
         const updatedQueue = context.actionsQueue?.filter(
-          (item) => item !== actionInQueue
+          (item) => item !== actionInQueue,
         );
         return {
           isKnockout: evaluationResult,
@@ -327,7 +338,7 @@ const questionMachine = createMachine<
       /** Checks if there are any actions in the queue */
       hasActionsInQueue: (context) => Boolean(context.actionsQueue?.length),
     },
-  }
+  },
 );
 
 export default questionMachine;
@@ -335,21 +346,21 @@ export default questionMachine;
 /** First item in the queue that contains an action that matches the given `actionType` */
 export const findActionInQueue = (
   queue: ActionsQueueItem[] | undefined,
-  actionType: ActionType
+  actionType: ActionType,
 ): ActionsQueueItem | undefined => {
   return queue
     ? queue.find(({ actions }) =>
-        actions.some((action) => action.actionType === actionType)
+        actions.some((action) => action.actionType === actionType),
       )
     : undefined;
 };
 /** Returns `true` if the queue contains an item with an action that matches the given `actionType` */
 export const hasActionInQueue = (
   queue: ActionsQueueItem[],
-  actionType: ActionType
+  actionType: ActionType,
 ): boolean => {
   return queue.some((item) =>
-    item.actions.find((action) => action.actionType === actionType)
+    item.actions.find((action) => action.actionType === actionType),
   );
 };
 /**
@@ -358,13 +369,10 @@ export const hasActionInQueue = (
  */
 const evaluateComparison = (
   inputValue: string | Moment,
-  comparisonData: Comparison
+  comparisonData: Comparison,
 ): boolean => {
-  const {
-    comparisonType,
-    comparisonValue,
-    comparisonOperator,
-  } = comparisonData;
+  const { comparisonType, comparisonValue, comparisonOperator } =
+    comparisonData;
 
   // Get the value from the map based on the comparisonType
   const value = getValueFromComparisonType(inputValue, comparisonType);
@@ -378,7 +386,7 @@ const evaluateComparison = (
 
 const getValueFromComparisonType = (
   inputValue: string | Moment,
-  comparisonType: ComparisonType
+  comparisonType: ComparisonType,
 ): string | boolean | Moment => {
   const comparisonTypeMap = {
     boolean:
@@ -409,7 +417,7 @@ const comparisonOperatorMap = {
   },
   greaterThanOrEqual: function <Type>(
     value: Type,
-    comparisonValue: Type
+    comparisonValue: Type,
   ): boolean {
     return value >= comparisonValue;
   },
@@ -418,7 +426,7 @@ const comparisonOperatorMap = {
   },
   lesserThanOrEqual: function <Type>(
     value: Type,
-    comparisonValue: Type
+    comparisonValue: Type,
   ): boolean {
     return value <= comparisonValue;
   },

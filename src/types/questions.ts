@@ -88,7 +88,7 @@ interface MultipleChoiceQuestion extends QuestionBase<'multipleChoice'> {
   dataSource: DataSource | null;
 }
 
-interface MultipleChoiceOptionValue {
+export interface MultipleChoiceOptionValue {
   value: string;
   label: string;
 }
