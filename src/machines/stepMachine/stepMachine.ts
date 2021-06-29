@@ -18,14 +18,15 @@ import {
 } from 'types/actions';
 import { StepTypes } from 'types/steps';
 import {
+  DataSourceItem,
   StepMachineContext,
   StepMachineEvent,
   StepMachineState,
   StepQuestion,
   StepText,
 } from './stepMachineTypes';
-import { MCEMachineEvent } from 'machines/MCEMachine/MCEMachineTypes';
 import {
+  DataSource,
   PrePopulatedResponse,
   QuestionType,
   QuestionTypes,
@@ -42,6 +43,7 @@ import questionMachine, {
   hasActionInQueue,
 } from 'machines/questionMachine/questionMachine';
 import { textStepMachine } from '../textStepMachine';
+import { fetchWrapper } from 'utils/fetchWrapper';
 
 interface MutationData {
   applicationKey: string;
@@ -56,7 +58,7 @@ const useStepMachine = (): StateMachine<
 > => {
   const { mutateAsync } = useMutation<unknown, unknown, MutationData>(
     ({ applicationKey, body }) =>
-      sendWorkflowResponses({ body, applicationKey })
+      sendWorkflowResponses({ body, applicationKey }),
   );
 
   const queryClient = useQueryClient();
@@ -77,6 +79,7 @@ const useStepMachine = (): StateMachine<
         applicationKey: '',
         workflowID: '',
         wasSubmitted: false,
+        parentUpdated: false,
         confirmationID: '',
       },
       on: {
@@ -84,263 +87,388 @@ const useStepMachine = (): StateMachine<
           actions: ['sendUpdateToParent'],
         },
         RECEIVE_QUESTION_UPDATE: {
-          target: 'performingActions',
+          target: '#checkingActionsQueue',
           actions: [
             'setUpdatesFromQuestionToContext',
             'sendKnockoutStateToParent',
           ],
         },
+        RECEIVE_VALUE_UPDATE: {
+          actions: [
+            'updateValues',
+            'updateDataSourcesQueue',
+            send((context) =>
+              context.dataSourcesQueue?.length
+                ? { type: 'CHECK_DATA_SOURCES_QUEUE' }
+                : { type: '' },
+            ),
+          ],
+        },
       },
       states: {
         initializing: {
-          entry: [
-            'setInitialValues',
-            'initializeChildSteps',
-            actions.send({ type: 'DONE' }),
-          ],
-          on: {
-            DONE: 'idle',
-          },
+          id: 'initializing',
+          entry: ['setInitialValues', 'setDataSources', 'initializeChildSteps'],
+          always: [{ target: 'initialized' }],
         },
-        idle: {
-          id: 'idle',
-          on: {
-            SUBMIT: {
-              target: 'submitting',
-              actions: ['setFormDetailsToContext'],
-            },
-          },
-        },
-        performingActions: {
-          id: 'performingActions',
-          initial: 'checkingActionsQueue',
+        initialized: {
+          id: 'initialized',
+          type: 'parallel',
           states: {
-            checkingActionsQueue: {
-              /**
-               * In the `performingActions` state we first want to check which action needs to be performed. First it will check for an
-               * `updateStepVisibility` action, if it exists in the queue it will transition to the `updatingChildStepVisibility` state where that
-               * action will be performed, then it will remove that action from the queue and  transition back to this `checkingActionsQueue` state.
-               * That process is repeated until there are no `updateStepVisibility` actions left in the queue, then it will do the same for all of
-               * the `updateStepIsRequired` actions. When there are no actions left in the queue, the machine will return to the `idle` state.
-               */
-              always: [
-                {
-                  target: 'updatingChildStepVisibility',
-                  cond: 'hasUpdateStepVisibilityAction',
+            form: {
+              id: 'form',
+              initial: 'idle',
+              states: {
+                idle: {
+                  id: 'idle',
+                  on: {
+                    SUBMIT: {
+                      target: 'submitting',
+                      actions: ['setFormDetailsToContext'],
+                    },
+                  },
                 },
-                {
-                  target: 'updatingChildStepRequired',
-                  cond: 'hasUpdateStepRequiredAction',
+                submitting: {
+                  id: 'submitting',
+                  initial: 'checkingSubmittedValues',
+                  states: {
+                    checkingSubmittedValues: {
+                      always: [
+                        {
+                          target: '#idle',
+                          cond: 'isClean',
+                          actions: ['sendParentNextStep'],
+                        },
+                        {
+                          target: 'sendingWorkflowResponses',
+                          cond: 'hasNewValues',
+                        },
+                        {
+                          target: 'submittingApplication',
+                          cond: 'stepCanSubmitApplication',
+                        },
+                        {
+                          target: '#idle',
+                          actions: [
+                            'sendSummaryToParent',
+                            assign<StepMachineContext, StepMachineEvent>({
+                              parentUpdated: true,
+                            }),
+                            'sendParentNextStep',
+                          ],
+                        },
+                      ],
+                    },
+                    sendingWorkflowResponses: {
+                      id: 'sendingWorkflowResponses',
+                      invoke: {
+                        src: 'sendWorkflowResponses',
+                        onDone: [
+                          {
+                            target: '#cancelled',
+                            cond: 'isKnockout',
+                          },
+                          {
+                            target: 'checkingSubmittedValues',
+                            actions: [
+                              'sendSummaryToParent',
+                              assign<
+                                StepMachineContext,
+                                DoneInvokeEvent<unknown>
+                              >({
+                                hasNewValues: false,
+                                parentUpdated: true,
+                              }),
+                              sendParent({
+                                type: 'SET_SUCCESS_MESSAGE',
+                                message: 'Responses saved successfully',
+                              }),
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                    submittingApplication: {
+                      id: 'submittingApplication',
+                      invoke: {
+                        src: 'sendApplicationSubmit',
+                        onDone: [
+                          {
+                            target: '#idle',
+                            cond: 'parentNeedsUpdate',
+                            actions: [
+                              'sendSummaryToParent',
+                              assign<
+                                StepMachineContext,
+                                DoneInvokeEvent<unknown>
+                              >({
+                                parentUpdated: true,
+                              }),
+                              'sendParentNextStep',
+                              sendParent({
+                                type: 'SET_SUCCESS_MESSAGE',
+                                message: 'Application submitted successfully',
+                              }),
+                            ],
+                          },
+                          { target: '#idle', actions: ['sendParentNextStep'] },
+                        ],
+                      },
+                    },
+                  },
                 },
-                { target: '#idle' },
-              ],
-            },
-            updatingChildStepVisibility: {
-              id: 'updatingChildStepVisibility',
-              /**
-               * Upon entering the `updatingChildStepVisibility` state we get the first conditional action in the queue that contains an
-               * `updateStepVisibility` action. Then we send an event (to this current state) with the action itself as well as the
-               * `evaluationResult` (which is determined within the questionMachine).
-               */
-              entry: actions.send((context) => {
-                const { questionActionsQueue } = context;
-                const queuedAction = findActionInQueue(
-                  questionActionsQueue,
-                  ActionTypes.UPDATESTEPVISIBILITY
-                );
-                const updateStepVisibilityAction = queuedAction?.actions?.find(
-                  (action): action is UpdateStepVisibilityAction =>
-                    action.actionType === ActionTypes.UPDATESTEPVISIBILITY
-                );
-                return {
-                  type: 'UPDATE_CHILD_STEP_VISIBILITY',
-                  updateStepVisibilityAction,
-                  evaluationResult: queuedAction?.evaluationResult,
-                };
-              }),
-              on: {
-                UPDATE_CHILD_STEP_VISIBILITY: {
-                  actions: [
-                    /**
-                     * Here we call the XState action that will tell the child step to update its visibility. Then we send the
-                     * 'REMOVE_ACTION_FROM_QUEUE' event with the `updateStepVisibility` action attached, there the action that was just performed
-                     * will be removed from the queue.
-                     */
-                    'updateChildStepVisibility',
-                    actions.send((_context, event) => ({
-                      type: 'REMOVE_ACTION_FROM_QUEUE',
-                      actionToRemove: event.updateStepVisibilityAction,
-                    })),
-                  ],
-                },
-                REMOVE_ACTION_FROM_QUEUE: {
-                  target: 'checkingActionsQueue',
-                  actions: ['removeActionFromQueue'],
+                cancelled: {
+                  id: 'cancelled',
+                  type: 'final',
                 },
               },
             },
-            updatingChildStepRequired: {
-              id: 'updatingChildStepRequired',
-              /**
-               * Upon entering the `updatingChildStepRequired` state we get the first conditional action in the queue that contains an
-               * `updateStepIsRequired` action. Then we send an event (to this current state) with the action itself as well as the
-               * `evaluationResult` (which is determined within the questionMachine).
-               */
-              entry: actions.send((context) => {
-                const { questionActionsQueue } = context;
-                const queuedAction = findActionInQueue(
-                  questionActionsQueue,
-                  ActionTypes.UPDATESTEPISREQUIRED
-                );
-                const updateStepIsRequiredAction = queuedAction?.actions?.find(
-                  (action): action is UpdateStepIsRequiredAction =>
-                    action.actionType === ActionTypes.UPDATESTEPISREQUIRED
-                );
-                return {
-                  type: 'UPDATE_CHILD_STEP_REQUIRED',
-                  updateStepIsRequiredAction,
-                  evaluationResult: queuedAction?.evaluationResult,
-                };
-              }),
-              on: {
-                UPDATE_CHILD_STEP_REQUIRED: {
+            dataSources: {
+              id: 'dataSources',
+              initial: 'initializing',
+              states: {
+                initializing: {
+                  always: [
+                    {
+                      target: 'checkingDataSourcesQueue',
+                      actions: [
+                        assign<StepMachineContext, StepMachineEvent>({
+                          dataSourcesQueue: (context) => [
+                            ...(context.dataSources?.items ?? []),
+                          ],
+                        }),
+                      ],
+                    },
+                  ],
+                },
+                idle: {
+                  id: 'dataSourcesIdle',
+                  on: {
+                    CHECK_DATA_SOURCES_QUEUE: {
+                      target: 'checkingDataSourcesQueue',
+                    },
+                  },
+                },
+                checkingDataSourcesQueue: {
+                  always: [
+                    {
+                      target: 'fetchingDataSource',
+                      cond: 'hasDataSourceInQueue',
+                    },
+                    { target: '#dataSourcesIdle' },
+                  ],
+                },
+                fetchingDataSource: {
+                  id: 'fetchingDataSource',
+                  entry: [
+                    assign({
+                      currentDataSource: (context) => {
+                        const { dataSourcesQueue } = context;
+                        const [dataSourceItem] =
+                          dataSourcesQueue as DataSourceItem[];
+                        return dataSourceItem as DataSourceItem;
+                      },
+                    }),
+                  ],
+                  invoke: {
+                    src: 'fetchDataSource',
+                    onDone: {
+                      target: 'checkingDataSourcesQueue',
+                      actions: [
+                        send(
+                          (context, event) => {
+                            const { data } = event;
+                            const { currentDataSource } = context;
+                            const { labelPropertyName, valuePropertyName } = (
+                              currentDataSource as DataSourceItem
+                            ).dataSource;
+                            const options = data.map(
+                              (item: Record<string, string>) => ({
+                                value: item[valuePropertyName],
+                                label: item[labelPropertyName],
+                              }),
+                            );
+                            return { type: 'UPDATE_OPTIONS', options };
+                          },
+                          {
+                            to: (context) => {
+                              const { currentDataSource, childSteps } = context;
+                              const { originID } =
+                                currentDataSource as DataSourceItem;
+                              const { ref, id } =
+                                childSteps?.find(
+                                  (childStep) => childStep.id === originID,
+                                ) ?? {};
+                              if (typeof ref === 'undefined') {
+                                throw new Error(
+                                  `childStep ${id} ref is undefined`,
+                                );
+                              }
+                              return ref;
+                            },
+                          },
+                        ),
+                        assign((context, event) => {
+                          const { currentDataSource } = context;
+                          const { valuePropertyName } = (
+                            currentDataSource as DataSourceItem
+                          ).dataSource;
+                          const questionID =
+                            context.childSteps?.find(
+                              (childStep): childStep is StepQuestion =>
+                                childStep.id ===
+                                context.currentDataSource?.originID,
+                            )?.questionID ?? '';
+                          const optionsValues = event.data.map(
+                            (item: Record<string, string>) =>
+                              item[valuePropertyName],
+                          );
+                          return {
+                            // removes item from queue
+                            dataSourcesQueue:
+                              context.dataSourcesQueue?.slice(1),
+                            // if the current question value doesn't matche one of the values from the api response set the value to empty
+                            values:
+                              context.values &&
+                              !optionsValues.includes(
+                                context.values[questionID],
+                              )
+                                ? {
+                                    ...context.values,
+                                    [questionID]: '',
+                                  }
+                                : context.values,
+                          };
+                        }),
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+            conditionalActions: {
+              id: 'conditionalActions',
+              initial: 'checkingActionsQueue',
+              states: {
+                checkingActionsQueue: {
                   /**
-                   * Here we call the XState action that will tell the child step to update its required state. Then we send the
-                   * 'REMOVE_ACTION_FROM_QUEUE' event with the `updateStepIsRequired` action attached, there the action that was just performed
-                   * will be removed from the queue.
+                   * In the `performingActions` state we first want to check which action needs to be performed. First it will check for an
+                   * `updateStepVisibility` action, if it exists in the queue it will transition to the `updatingChildStepVisibility` state where that
+                   * action will be performed, then it will remove that action from the queue and  transition back to this `checkingActionsQueue` state.
+                   * That process is repeated until there are no `updateStepVisibility` actions left in the queue, then it will do the same for all of
+                   * the `updateStepIsRequired` actions. When there are no actions left in the queue, the machine will return to the `idle` state.
                    */
-                  actions: [
-                    'updateChildStepRequired',
-                    actions.send((_context, event) => ({
-                      type: 'REMOVE_ACTION_FROM_QUEUE',
-                      actionToRemove: event.updateStepIsRequiredAction,
-                    })),
+                  id: 'checkingActionsQueue',
+                  always: [
+                    {
+                      target: 'updatingChildStepVisibility',
+                      cond: 'hasUpdateStepVisibilityAction',
+                    },
+                    {
+                      target: 'updatingChildStepRequired',
+                      cond: 'hasUpdateStepRequiredAction',
+                    },
+                    { target: '#conditionalActionsIdle' },
                   ],
                 },
-                REMOVE_ACTION_FROM_QUEUE: {
-                  target: 'checkingActionsQueue',
-                  actions: ['removeActionFromQueue'],
+                idle: {
+                  id: 'conditionalActionsIdle',
+                },
+                updatingChildStepVisibility: {
+                  id: 'updatingChildStepVisibility',
+                  /**
+                   * Upon entering the `updatingChildStepVisibility` state we get the first conditional action in the queue that contains an
+                   * `updateStepVisibility` action. Then we send an event (to this current state) with the action itself as well as the
+                   * `evaluationResult` (which is determined within the questionMachine).
+                   */
+                  entry: actions.send((context) => {
+                    const { questionActionsQueue } = context;
+                    const queuedAction = findActionInQueue(
+                      questionActionsQueue,
+                      ActionTypes.UPDATESTEPVISIBILITY,
+                    );
+                    const updateStepVisibilityAction =
+                      queuedAction?.actions?.find(
+                        (action): action is UpdateStepVisibilityAction =>
+                          action.actionType ===
+                          ActionTypes.UPDATESTEPVISIBILITY,
+                      );
+                    return {
+                      type: 'UPDATE_CHILD_STEP_VISIBILITY',
+                      updateStepVisibilityAction,
+                      evaluationResult: queuedAction?.evaluationResult,
+                    };
+                  }),
+                  on: {
+                    UPDATE_CHILD_STEP_VISIBILITY: {
+                      actions: [
+                        /**
+                         * Here we call the XState action that will tell the child step to update its visibility. Then we send the
+                         * 'REMOVE_ACTION_FROM_QUEUE' event with the `updateStepVisibility` action attached, there the action that was just performed
+                         * will be removed from the queue.
+                         */
+                        'updateChildStepVisibility',
+                        actions.send((_context, event) => ({
+                          type: 'REMOVE_ACTION_FROM_QUEUE',
+                          actionToRemove: event.updateStepVisibilityAction,
+                        })),
+                      ],
+                    },
+                    REMOVE_ACTION_FROM_QUEUE: {
+                      target: 'checkingActionsQueue',
+                      actions: ['removeActionFromQueue'],
+                    },
+                  },
+                },
+                updatingChildStepRequired: {
+                  id: 'updatingChildStepRequired',
+                  /**
+                   * Upon entering the `updatingChildStepRequired` state we get the first conditional action in the queue that contains an
+                   * `updateStepIsRequired` action. Then we send an event (to this current state) with the action itself as well as the
+                   * `evaluationResult` (which is determined within the questionMachine).
+                   */
+                  entry: actions.send((context) => {
+                    const { questionActionsQueue } = context;
+                    const queuedAction = findActionInQueue(
+                      questionActionsQueue,
+                      ActionTypes.UPDATESTEPISREQUIRED,
+                    );
+                    const updateStepIsRequiredAction =
+                      queuedAction?.actions?.find(
+                        (action): action is UpdateStepIsRequiredAction =>
+                          action.actionType ===
+                          ActionTypes.UPDATESTEPISREQUIRED,
+                      );
+                    return {
+                      type: 'UPDATE_CHILD_STEP_REQUIRED',
+                      updateStepIsRequiredAction,
+                      evaluationResult: queuedAction?.evaluationResult,
+                    };
+                  }),
+                  on: {
+                    UPDATE_CHILD_STEP_REQUIRED: {
+                      /**
+                       * Here we call the XState action that will tell the child step to update its required state. Then we send the
+                       * 'REMOVE_ACTION_FROM_QUEUE' event with the `updateStepIsRequired` action attached, there the action that was just performed
+                       * will be removed from the queue.
+                       */
+                      actions: [
+                        'updateChildStepRequired',
+                        actions.send((_context, event) => ({
+                          type: 'REMOVE_ACTION_FROM_QUEUE',
+                          actionToRemove: event.updateStepIsRequiredAction,
+                        })),
+                      ],
+                    },
+                    REMOVE_ACTION_FROM_QUEUE: {
+                      target: 'checkingActionsQueue',
+                      actions: ['removeActionFromQueue'],
+                    },
+                  },
                 },
               },
             },
           },
-        },
-        submitting: {
-          id: 'submitting',
-          initial: 'checkingSubmittedValues',
-          states: {
-            checkingSubmittedValues: {
-              always: [
-                {
-                  target: 'sendingWorkflowResponses',
-                  cond: 'hasNewValues',
-                },
-                {
-                  target: 'submittingApplication',
-                  cond: 'stepCanSubmitApplication',
-                },
-                {
-                  target: 'updatingParent',
-                },
-              ],
-            },
-            sendingWorkflowResponses: {
-              invoke: {
-                src: 'sendWorkflowResponses',
-                onDone: [
-                  {
-                    target: '#cancelled',
-                    cond: 'isKnockout',
-                  },
-                  {
-                    target: 'checkingSubmittedValues',
-                    actions: [
-                      assign<StepMachineContext, DoneInvokeEvent<unknown>>({
-                        hasNewValues: false,
-                      }),
-                      sendParent({
-                        type: 'SET_SUCCESS_MESSAGE',
-                        message: 'Responses saved successfully',
-                      }),
-                    ],
-                  },
-                ],
-                onError: {
-                  target: '#idle',
-                  actions: [
-                    sendParent<
-                      StepMachineContext,
-                      DoneInvokeEvent<Error>,
-                      MCEMachineEvent
-                    >((_context, event) => {
-                      return {
-                        type: 'SET_ERROR',
-                        error: {
-                          errorData: event.data,
-                          message: event.data.message,
-                        },
-                      };
-                    }),
-                  ],
-                },
-              },
-            },
-            submittingApplication: {
-              invoke: {
-                src: 'sendApplicationSubmit',
-                onDone: {
-                  target: 'updatingParent',
-                },
-                onError: {
-                  target: '#idle',
-                  actions: [
-                    sendParent<
-                      StepMachineContext,
-                      DoneInvokeEvent<Error>,
-                      MCEMachineEvent
-                    >((_context, event) => {
-                      return {
-                        type: 'SET_ERROR',
-                        error: {
-                          errorData: event.data,
-                          message: event.data.message,
-                        },
-                      };
-                    }),
-                  ],
-                },
-              },
-            },
-            /**
-             * If the responses are successfully sent to the backend update the parent with the `stepSummary` and send the 'GO_TO_STEP' event
-             * to the parent machine
-             */
-            updatingParent: {
-              entry: [
-                actions.send((context) => {
-                  const { stepSummary, stepID } = context;
-                  return {
-                    type: 'UPDATE_PARENT',
-                    payload: { stepSummary, stepID },
-                  };
-                }),
-                actions.sendParent((context) => ({
-                  type: 'GO_TO_STEP',
-                  stepID: context.nextStepID,
-                })),
-                actions.send('DONE'),
-              ],
-              on: {
-                DONE: {
-                  target: '#idle',
-                },
-              },
-            },
-          },
-        },
-        cancelled: {
-          id: 'cancelled',
-          type: 'final',
         },
       },
     },
@@ -348,13 +476,8 @@ const useStepMachine = (): StateMachine<
       services: {
         /** When the form is submitted we need to send the values to the backend in the appropriate formate */
         async sendWorkflowResponses(context) {
-          const {
-            applicationKey,
-            workflowID,
-            stepID,
-            childSteps,
-            values,
-          } = context;
+          const { applicationKey, workflowID, stepID, childSteps, values } =
+            context;
 
           if (!applicationKey) {
             throw new Error('Invalid `applicationKey`');
@@ -362,7 +485,7 @@ const useStepMachine = (): StateMachine<
 
           const questions = childSteps?.filter(
             (childStep): childStep is StepQuestion =>
-              childStep.stepType === StepTypes.QUESTION
+              childStep.stepType === StepTypes.QUESTION,
           );
 
           // TODO: figure out the appropriate type states to make these checks unnecessary
@@ -383,12 +506,12 @@ const useStepMachine = (): StateMachine<
             .map(([questionID, value]) => {
               const { prePopulatedResponse, questionType } =
                 questions.find(
-                  (question) => question.questionID === questionID
+                  (question) => question.questionID === questionID,
                 ) ?? {};
 
               const responseSource = getResponseSource(
                 prePopulatedResponse,
-                value
+                value,
               );
               const dataType = getDataType(questionType);
 
@@ -422,8 +545,30 @@ const useStepMachine = (): StateMachine<
           return queryClient.fetchQuery(['submitData'], () =>
             sendApplicationSubmit({
               applicationKey,
-            })
+            }),
           );
+        },
+        fetchDataSource: (context) => {
+          const { currentDataSource, values } = context;
+
+          const {
+            url: baseUrl,
+            queryStringParameters,
+            requestMethodType,
+          } = (currentDataSource as DataSourceItem).dataSource;
+
+          const url =
+            baseUrl +
+            queryStringParameters
+              .map((item) => {
+                const zipCode = (values as Record<string, string>)[
+                  item.questionId
+                ];
+                return `?${item.parameterName}=${zipCode} `;
+              })
+              .join('');
+
+          return fetchWrapper({ url, method: requestMethodType });
         },
       },
       actions: {
@@ -437,14 +582,53 @@ const useStepMachine = (): StateMachine<
             payload: event.payload,
           };
         }) as any,
+        sendSummaryToParent: actions.send((context) => {
+          const { stepSummary, stepID } = context;
+          return {
+            type: 'UPDATE_PARENT',
+            payload: { stepSummary, stepID },
+          };
+        }),
+        sendParentNextStep: actions.sendParent((context) => ({
+          type: 'GO_TO_STEP',
+          stepID: context.nextStepID,
+        })),
+        updateValues: assign<
+          StepMachineContext,
+          NarrowEvent<StepMachineEvent, 'RECEIVE_VALUE_UPDATE'>
+        >({
+          values: (context, event) => ({
+            ...context.values,
+            [event.questionID]: event.value,
+          }),
+        }) as any,
+        updateDataSourcesQueue: assign<
+          StepMachineContext,
+          NarrowEvent<StepMachineEvent, 'RECEIVE_VALUE_UPDATE'>
+        >({
+          dataSourcesQueue: (context, event) => {
+            const { dataSources, dataSourcesQueue } = context;
+            const { questionID } = event;
+            if (dataSources?.dependencies.includes(event.questionID)) {
+              const dataSource = dataSources.items.find(
+                (item) => item.questionID === questionID,
+              );
+              if (!dataSource) {
+                return dataSourcesQueue;
+              }
+              return [...(dataSourcesQueue || []), dataSource];
+            }
+            return dataSourcesQueue;
+          },
+        }) as any,
         /** Set the `initialValues` for the form within the step based on the step's questions */
-        setInitialValues: assign<StepMachineContext, StepMachineEvent>({
-          initialValues: (context) => {
+        setInitialValues: assign<StepMachineContext, StepMachineEvent>(
+          (context) => {
             const { childSteps } = context;
             const questions = childSteps
               ?.filter(
                 (childStep): childStep is StepQuestion =>
-                  childStep.stepType === StepTypes.QUESTION
+                  childStep.stepType === StepTypes.QUESTION,
               )
               .map((question) => {
                 const getValue = (value?: string | boolean): string => {
@@ -461,9 +645,61 @@ const useStepMachine = (): StateMachine<
                 return [question.questionID, value];
               });
 
-            return questions ? Object.fromEntries(questions) : {};
+            const valuesObject = questions ? Object.fromEntries(questions) : {};
+            return {
+              initialValues: valuesObject,
+              values: valuesObject,
+            };
           },
-        }),
+        ),
+        setDataSources: assign<StepMachineContext, StepMachineEvent>(
+          (context) => {
+            const { childSteps } = context;
+            const dataSources = childSteps
+              ?.filter(
+                (childStep): childStep is StepQuestion =>
+                  childStep.stepType === StepTypes.QUESTION,
+              )
+              .reduce(
+                (
+                  acc: {
+                    dependencies: string[];
+                    items: {
+                      questionID: string;
+                      originID: string;
+                      dataSource: DataSource;
+                    }[];
+                  },
+                  questionStep,
+                ) => {
+                  const { dataSource, id } = questionStep;
+                  if (!dataSource) {
+                    return acc;
+                  }
+                  const [questionID] = dataSource.queryStringParameters.map(
+                    (item) => item.questionId,
+                  );
+                  if (!questionID) {
+                    console.warn('dataSource missing questionID', dataSource);
+                    return acc;
+                  }
+                  const dataSourceItem = {
+                    questionID: questionID,
+                    originID: id,
+                    dataSource,
+                  };
+                  questionID && acc.dependencies.push(questionID);
+                  acc.items.push(dataSourceItem);
+                  return acc;
+                },
+                { dependencies: [], items: [] },
+              );
+
+            return {
+              dataSources,
+            };
+          },
+        ),
         /** Spawns all of the question and text subSteps, each with the initial context that they need */
         initializeChildSteps: assign<StepMachineContext, StepMachineEvent>(
           (context) => {
@@ -482,12 +718,13 @@ const useStepMachine = (): StateMachine<
                           initialVisibility: childStep.isVisible,
                           initialRequired: childStep.isRequired,
                           initialValue: getValue(
-                            childStep.prePopulatedResponse?.value
+                            childStep.prePopulatedResponse?.value,
                           ),
                           onCompleteConditionalActions:
                             childStep.onCompleteConditionalActions,
+                          options: childStep.options,
                         }),
-                        `question-${childStep.id}`
+                        `question-${childStep.id}`,
                       ) as StepQuestion['ref'],
                     };
                   } else {
@@ -498,26 +735,30 @@ const useStepMachine = (): StateMachine<
                           id: childStep.id,
                           initialVisibility: childStep.isVisible,
                         }),
-                        `text-${childStep.id}`
+                        `text-${childStep.id}`,
                       ) as StepText['ref'],
                     };
                   }
                 }),
             };
-          }
+          },
         ),
         /** The 'SUBMIT' event is sent with the form's values and the `stepSummary`, this action assigns those to the machine context */
         setFormDetailsToContext: assign<
           StepMachineContext,
           NarrowEvent<StepMachineEvent, 'SUBMIT'>
-        >((context, event) => ({
-          values: event.payload.values,
-          stepSummary: event.payload.stepSummary,
-          hasNewValues:
+        >((context, event) => {
+          const hasNewValues =
             !shallowCompare(event.payload.values, context.values) &&
-            !shallowCompare(event.payload.values, context.initialValues),
-          wasSubmitted: true,
-        })) as any,
+            !shallowCompare(event.payload.values, context.initialValues);
+          return {
+            values: event.payload.values,
+            stepSummary: event.payload.stepSummary,
+            hasNewValues,
+            parentUpdated: hasNewValues,
+            wasSubmitted: true,
+          };
+        }) as any,
         /**
          * When a question is changed the questionMachine will send an update to the it's parent stepMachine with any actions it needs to perform
          * and the knockout state that may have changed based on the question's value.
@@ -563,7 +804,7 @@ const useStepMachine = (): StateMachine<
                 ? {
                     ...questionAction,
                     actions: questionAction.actions.filter(
-                      (action) => action !== actionToRemove
+                      (action) => action !== actionToRemove,
                     ),
                   }
                 : questionAction;
@@ -613,14 +854,14 @@ const useStepMachine = (): StateMachine<
               const { ref, id } =
                 childSteps?.find(
                   (childStep) =>
-                    childStep.id === updateStepVisibilityAction?.stepId
+                    childStep.id === updateStepVisibilityAction?.stepId,
                 ) ?? {};
               if (typeof ref === 'undefined') {
                 throw new Error(`childStep ${id} ref is undefined`);
               }
               return ref;
             },
-          }
+          },
         ) as any,
         /** This action is almost exactly the same as `updateChildStepVisibility` */
         updateChildStepRequired: actions.send<
@@ -653,14 +894,14 @@ const useStepMachine = (): StateMachine<
               const { ref, id } =
                 childSteps?.find(
                   (childStep) =>
-                    childStep.id === updateStepIsRequiredAction?.stepId
+                    childStep.id === updateStepIsRequiredAction?.stepId,
                 ) ?? {};
               if (typeof ref === 'undefined') {
                 throw new Error(`childStep ${id} ref is undefined`);
               }
               return ref;
             },
-          }
+          },
         ) as any,
       },
       guards: {
@@ -669,7 +910,7 @@ const useStepMachine = (): StateMachine<
           return context.questionActionsQueue
             ? hasActionInQueue(
                 context.questionActionsQueue,
-                ActionTypes.UPDATESTEPVISIBILITY
+                ActionTypes.UPDATESTEPVISIBILITY,
               )
             : false;
         },
@@ -678,16 +919,23 @@ const useStepMachine = (): StateMachine<
           return context.questionActionsQueue
             ? hasActionInQueue(
                 context.questionActionsQueue,
-                ActionTypes.UPDATESTEPISREQUIRED
+                ActionTypes.UPDATESTEPISREQUIRED,
               )
             : false;
         },
+        isClean: (context) =>
+          Boolean(!context.hasNewValues) &&
+          Boolean(!context.hasPassWorkflow) &&
+          Boolean(context.parentUpdated),
         hasNewValues: (context) => Boolean(context.hasNewValues),
         stepCanSubmitApplication: (context) =>
           Boolean(context.hasPassWorkflow) && !context.confirmationID,
         isKnockout: (context) => Boolean(context.knockout?.isKnockout),
+        parentNeedsUpdate: (context) => Boolean(!context.parentUpdated),
+        hasDataSourceInQueue: (context) =>
+          Boolean(context.dataSourcesQueue?.length),
       },
-    }
+    },
   );
 
   return stepMachine;
@@ -702,7 +950,7 @@ export default useStepMachine;
  */
 const getResponseSource = (
   prePopulatedResponse: PrePopulatedResponse | undefined,
-  value: string
+  value: string,
 ): ResponseSourceType => {
   if (!prePopulatedResponse) {
     return ResponseSourceTypes.AGENT;
@@ -726,7 +974,7 @@ const getResponseSource = (
 
 /** Returns the response data type based on the question type */
 const getDataType = (
-  questionType: QuestionType | undefined
+  questionType: QuestionType | undefined,
 ): ResponseDataType => {
   if (questionType === QuestionTypes.BOOLEAN) {
     return ResponseDataTypes.BOOLEAN;
