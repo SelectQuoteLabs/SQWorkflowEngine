@@ -23,6 +23,7 @@ import {
 import { fetchApplication, fetchWorkflow } from 'utils/api';
 import { NarrowEvent } from 'machines/utils';
 import { useStepMachine } from 'machines/stepMachine';
+import { QuestionTypes } from 'types/questions';
 
 const useMCEMachine = (): StateMachine<
   MCEMachineContext,
@@ -156,8 +157,8 @@ const useMCEMachine = (): StateMachine<
                   target: '#fetchingWorkflow',
                 },
                 CLEAR_GLOBAL_LOADING_MESSAGE: {
-                  actions: ['clearGlobalLoadingMessage']
-                }
+                  actions: ['clearGlobalLoadingMessage'],
+                },
               },
             },
           },
@@ -171,7 +172,7 @@ const useMCEMachine = (): StateMachine<
           const { applicationKey } = context;
           return queryClient.fetchQuery(
             ['applicationData', { applicationKey }],
-            () => fetchApplication(applicationKey ?? '')
+            () => fetchApplication(applicationKey ?? ''),
           );
         },
         /** Gets the `application` data from context and uses it's `applicationKey` and `workflowId` properties to fetch the workflow data. */
@@ -186,7 +187,7 @@ const useMCEMachine = (): StateMachine<
               fetchWorkflow({
                 applicationKey: application.applicationKey,
                 workflowID: application.workflowId,
-              })
+              }),
           );
         },
       },
@@ -206,7 +207,7 @@ const useMCEMachine = (): StateMachine<
                 message: applicationKey ? '' : 'Missing applicationKey in URL',
               },
             };
-          }
+          },
         ),
         /** Assigns the data returned from the invoked fetchApplication promise to the `application` property in context. */
         setApplicationData: assign({
@@ -248,7 +249,7 @@ const useMCEMachine = (): StateMachine<
                     wasSubmitted: false,
                     confirmationID: application?.confirmationId ?? '',
                   }),
-                  step.stepName
+                  step.stepName,
                 ) as MCEStep['ref'],
               };
             }),
@@ -283,7 +284,7 @@ const useMCEMachine = (): StateMachine<
           },
         }) as any,
       },
-    }
+    },
   );
 
   return MCEMachine;
@@ -311,7 +312,7 @@ const buildStepsArray = (stepsArray: GroupStep[]): StepsArray =>
       .filter(
         (step): step is QuestionStep | TextStep =>
           step.stepType === StepTypes.QUESTION ||
-          step.stepType === StepTypes.TEXT
+          step.stepType === StepTypes.TEXT,
       )
       .reduce((acc: ChildStep[], step) => {
         const { id, isVisible, onCompleteConditionalActions } = step;
@@ -320,6 +321,15 @@ const buildStepsArray = (stepsArray: GroupStep[]): StepsArray =>
           const {
             question: { id: questionID, prePopulatedResponse, questionType },
           } = step;
+          const dataSource =
+            step.question.questionType === QuestionTypes.MULTIPLECHOICE
+              ? step.question.dataSource
+              : null;
+          const options =
+            step.question.questionType === QuestionTypes.MULTIPLECHOICE
+              ? step.question.values
+              : null;
+
           acc.push({
             stepType: step.stepType,
             id,
@@ -329,6 +339,8 @@ const buildStepsArray = (stepsArray: GroupStep[]): StepsArray =>
             onCompleteConditionalActions,
             prePopulatedResponse,
             questionType,
+            dataSource,
+            options,
           });
         } else if (step.stepType === StepTypes.TEXT) {
           acc.push({
@@ -345,7 +357,7 @@ const buildStepsArray = (stepsArray: GroupStep[]): StepsArray =>
       onCompleteConditionalActions?.reduce((_acc, current) => {
         const { stepId } =
           (current.actions.find(
-            (action) => action.actionType === 'nextStep'
+            (action) => action.actionType === 'nextStep',
           ) as NextStepAction) ?? {};
         return stepId;
       }, '') ?? '';
@@ -353,8 +365,8 @@ const buildStepsArray = (stepsArray: GroupStep[]): StepsArray =>
     /** The `hasPassWorkflow` indicates if the step is the Summary step */
     const hasPassWorkflow = onCompleteConditionalActions?.some((item) =>
       item.actions.find(
-        (action) => action.actionType === ActionTypes.PASSWORKFLOW
-      )
+        (action) => action.actionType === ActionTypes.PASSWORKFLOW,
+      ),
     );
 
     acc.push({ stepName, stepID, nextStepID, childSteps, hasPassWorkflow });
