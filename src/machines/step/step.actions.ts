@@ -3,7 +3,7 @@ import { actions, AssignAction, ContextFrom, EventFrom, spawn } from 'xstate';
 import { ExtractModelEvent, shallowCompare } from 'machines/utils';
 import { Knockout, StepQuestion, StepText } from './step.types';
 import { StepTypes } from 'types/steps';
-import { textStepMachine } from 'machines/textStepMachine';
+import { textStepMachine } from 'machines/textStep.machine';
 import { workflowModel } from 'machines/workflow/workflow.machine';
 import { questionModel } from 'machines/question/question.machine';
 import questionMachine from 'machines/question';

@@ -8,7 +8,7 @@ import {
   QuestionType,
 } from 'types/questions';
 import { QuestionMachineRef } from 'machines/question/question.types';
-import { TextStepMachineRef } from 'machines/textStepMachine';
+import { TextStepMachineRef } from 'machines/textStep.machine';
 import stepMachine from './step.machine';
 
 export type StepMachineRef = ActorRefFrom<typeof stepMachine>;
