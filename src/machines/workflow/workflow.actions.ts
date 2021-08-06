@@ -6,8 +6,8 @@ import { QuestionTypes } from 'types/questions';
 import { GroupStep, QuestionStep, TextStep, StepTypes } from 'types/steps';
 import { ChildStep, WorkflowStep } from './workflow.types';
 import { workflowModel } from './workflow.machine';
-import { stepMachine } from 'machines/stepMachine';
-import { stepModel } from 'machines/stepMachine/stepMachine';
+import stepMachine from 'machines/step';
+import { stepModel } from 'machines/step/step.machine';
 
 const clearGlobalLoadingMessage = actions.assign<
   ContextFrom<typeof workflowModel>,

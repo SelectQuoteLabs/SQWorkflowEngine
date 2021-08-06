@@ -2,7 +2,7 @@ import {
   StepQuestion,
   StepText,
   StepMachineRef,
-} from 'machines/stepMachine/stepMachineTypes';
+} from 'machines/step/step.types';
 
 export interface QuestionDetails {
   questionID: string;
