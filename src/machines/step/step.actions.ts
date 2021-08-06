@@ -5,8 +5,8 @@ import { Knockout, StepQuestion, StepText } from './step.types';
 import { StepTypes } from 'types/steps';
 import { textStepMachine } from 'machines/textStepMachine';
 import { workflowModel } from 'machines/workflow/workflow.machine';
-import { questionModel } from 'machines/questionMachine/questionMachine';
-import { questionMachine } from 'machines/questionMachine';
+import { questionModel } from 'machines/question/question.machine';
+import questionMachine from 'machines/question';
 import { stepModel } from './step.machine';
 
 const setHasNewValues = (

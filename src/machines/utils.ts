@@ -3,7 +3,7 @@ import { ActorRef, EventFrom, StateFrom, StateMachine } from 'xstate';
 
 import { ActionType } from 'types/actions';
 import { Model } from 'xstate/lib/model.types';
-import { ActionsQueueItem } from './questionMachine/questionMachineTypes';
+import { ActionsQueueItem } from './question/question.types';
 
 export type NarrowEvent<
   Events,

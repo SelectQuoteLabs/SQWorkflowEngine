@@ -17,7 +17,7 @@ import {
 } from 'machines/utils';
 import { findActionInQueue, hasActionInQueue } from 'machines/utils';
 import { ChildStep, StepSummary } from 'machines/workflow/workflow.types';
-import { ActionsQueueItem } from 'machines/questionMachine/questionMachineTypes';
+import { ActionsQueueItem } from 'machines/question/question.types';
 import { stepActions } from './step.actions';
 import { workflowModel } from 'machines/workflow/workflow.machine';
 

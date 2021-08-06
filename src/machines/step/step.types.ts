@@ -7,7 +7,7 @@ import {
   PrePopulatedResponse,
   QuestionType,
 } from 'types/questions';
-import { QuestionMachineRef } from 'machines/questionMachine/questionMachineTypes';
+import { QuestionMachineRef } from 'machines/question/question.types';
 import { TextStepMachineRef } from 'machines/textStepMachine';
 import stepMachine from './step.machine';
 
