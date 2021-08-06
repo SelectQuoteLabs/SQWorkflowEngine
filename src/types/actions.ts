@@ -6,6 +6,8 @@ export const ActionTypes = {
   NEXTSTEP: 'nextStep',
   UPDATESTEPVISIBILITY: 'updateStepVisibility',
   UPDATESTEPISREQUIRED: 'updateStepIsRequired',
+  UPDATEMULTIPLESTEPISREQUIRED: 'updateMultipleStepIsRequired',
+  UPDATEMULTIPLESTEPVISIBILITY: 'updateMultipleStepVisibility',
 } as const;
 export type ActionType = UnionFromKeys<typeof ActionTypes>;
 
@@ -29,9 +31,21 @@ export interface UpdateStepVisibilityAction
   isVisible: boolean;
 }
 
+export interface UpdateMultipleStepsVisibilityAction
+  extends ActionBase<'updateMultipleStepVisibility'> {
+  stepIds: string[];
+  isVisible: boolean;
+}
+
 export interface UpdateStepIsRequiredAction
   extends ActionBase<'updateStepIsRequired'> {
   stepId: string;
+  isRequired: boolean;
+}
+
+export interface UpdateMultipleStepsIsRequiredAction
+  extends ActionBase<'updateMultipleStepIsRequired'> {
+  stepIds: string[];
   isRequired: boolean;
 }
 
@@ -43,5 +57,7 @@ export type Action =
   | PassWorkflowAction
   | FailWorkflowAction
   | UpdateStepVisibilityAction
+  | UpdateMultipleStepsVisibilityAction
   | UpdateStepIsRequiredAction
+  | UpdateMultipleStepsIsRequiredAction
   | NextStepAction;
