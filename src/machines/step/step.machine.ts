@@ -8,20 +8,21 @@ import {
   UpdateMultipleStepsVisibilityAction,
   UpdateStepIsRequiredAction,
   UpdateStepVisibilityAction,
-} from 'types/actions';
+} from '../../types/actions';
 import { Knockout } from './step.types';
 import {
   createSelector,
   createSelectorHook,
   ExtractModelEvent,
-} from 'machines/utils';
-import { findActionInQueue, hasActionInQueue } from 'machines/utils';
-import { ChildStep, StepSummary } from 'machines/workflow/workflow.types';
-import { ActionsQueueItem } from 'machines/question/question.types';
+  findActionInQueue,
+  hasActionInQueue,
+} from '../utils';
+import { ChildStep, StepSummary } from '../workflow/workflow.types';
+import { ActionsQueueItem } from '../question/question.types';
 import { stepActions } from './step.actions';
-import { workflowModel } from 'machines/workflow/workflow.machine';
+import { workflowModel } from '../workflow/workflow.machine';
 
-interface DataSourceDependency {
+export interface DataSourceDependency {
   questionID: string;
   originID: string;
 }

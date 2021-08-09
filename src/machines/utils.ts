@@ -1,8 +1,8 @@
 import { useSelector } from '@xstate/react';
 import { ActorRef, EventFrom, StateFrom, StateMachine } from 'xstate';
-
-import { ActionType } from 'types/actions';
 import { Model } from 'xstate/lib/model.types';
+
+import { ActionType } from '../types/actions';
 import { ActionsQueueItem } from './question/question.types';
 
 export type NarrowEvent<

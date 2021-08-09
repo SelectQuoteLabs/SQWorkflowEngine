@@ -7,11 +7,15 @@
       "DOM.Iterable",
       "ESNext"
     ],
+    "types": [
+      "vite/client"
+    ],
     "allowJs": false,
     "jsx": "react-jsx",
-    "declaration": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
     "sourceMap": true,
-    "noEmit": true,
+    "noEmit": false,
     "isolatedModules": true,
     "strict": true,
     "noImplicitReturns": true,
@@ -23,7 +27,8 @@
     "esModuleInterop": true,
     "skipLibCheck": false,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "outDir": "dist"
   },
   "include": [
     "./src"

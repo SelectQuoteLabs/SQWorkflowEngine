@@ -1,8 +1,4 @@
-import {
-  StepQuestion,
-  StepText,
-  StepMachineRef,
-} from 'machines/step/step.types';
+import { StepQuestion, StepText, StepMachineRef } from '../step/step.types';
 
 export interface QuestionDetails {
   questionID: string;

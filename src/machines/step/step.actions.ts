@@ -1,12 +1,12 @@
 import { actions, AssignAction, ContextFrom, EventFrom, spawn } from 'xstate';
 
-import { ExtractModelEvent, shallowCompare } from 'machines/utils';
+import { ExtractModelEvent, shallowCompare } from '../utils';
 import { Knockout, StepQuestion, StepText } from './step.types';
-import { StepTypes } from 'types/steps';
-import { textStepMachine } from 'machines/textStep.machine';
-import { workflowModel } from 'machines/workflow/workflow.machine';
-import { questionModel } from 'machines/question/question.machine';
-import questionMachine from 'machines/question';
+import { StepTypes } from '../../types/steps';
+import { textStepMachine } from '../textStep.machine';
+import { workflowModel } from '../workflow/workflow.machine';
+import { questionModel } from '../question/question.machine';
+import questionMachine from '../question';
 import { stepModel } from './step.machine';
 
 const setHasNewValues = (
