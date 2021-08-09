@@ -1,13 +1,18 @@
 import { actions, spawn, ContextFrom, EventFrom } from 'xstate';
 
-import { ExtractModelEvent } from 'machines/utils';
-import { ActionTypes, NextStepAction } from 'types/actions';
-import { QuestionTypes } from 'types/questions';
-import { GroupStep, QuestionStep, TextStep, StepTypes } from 'types/steps';
+import { ExtractModelEvent } from '../utils';
+import { ActionTypes, NextStepAction } from '../../types/actions';
+import { QuestionTypes } from '../../types/questions';
+import {
+  GroupStep,
+  QuestionStep,
+  TextStep,
+  StepTypes,
+} from '../../types/steps';
 import { ChildStep, WorkflowStep } from './workflow.types';
 import { workflowModel } from './workflow.machine';
-import stepMachine from 'machines/step';
-import { stepModel } from 'machines/step/step.machine';
+import stepMachine from '../step';
+import { stepModel } from '../step/step.machine';
 
 const clearGlobalLoadingMessage = actions.assign<
   ContextFrom<typeof workflowModel>,

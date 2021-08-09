@@ -1,13 +1,13 @@
 import { actions, ContextFrom, DoneInvokeEvent, EventFrom } from 'xstate';
 import { Moment } from 'moment';
 
-import { ExtractModelEvent, findActionInQueue } from 'machines/utils';
-import { Action, ActionTypes, FailWorkflowAction } from 'types/actions';
-import { EvaluationTypes } from 'types/evaluations';
-import { Comparison, ComparisonType } from 'types/comparisons';
+import { ExtractModelEvent, findActionInQueue } from '../utils';
+import { Action, ActionTypes, FailWorkflowAction } from '../../types/actions';
+import { EvaluationTypes } from '../../types/evaluations';
+import { Comparison, ComparisonType } from '../../types/comparisons';
 import { ActionsQueueItem } from './question.types';
-import { FipsCode } from 'types/dataSource';
-import { stepModel } from 'machines/step/step.machine';
+import { FipsCode } from '../../types/dataSource';
+import { stepModel } from '../step/step.machine';
 import { questionModel } from './question.machine';
 
 /** Assigns the `value` from the event to the `value` in context */

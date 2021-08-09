@@ -2,17 +2,17 @@ import { actions, assign } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 import { Moment } from 'moment';
 
-import { ActionTypes } from 'types/actions';
 import {
   createSelector,
   createSelectorHook,
   ExtractModelEvent,
   hasActionInQueue,
-} from 'machines/utils';
-import { ConditionalActions } from 'types/evaluations';
+} from '../utils';
+import { ActionTypes } from '../../types/actions';
+import { ConditionalActions } from '../../types/evaluations';
 import { ActionsQueueItem } from './question.types';
-import { DataSource, MultipleChoiceOptionValue } from 'types/questions';
-import { fetchWrapper } from 'utils/fetchWrapper';
+import { DataSource, MultipleChoiceOptionValue } from '../../types/questions';
+import { fetchWrapper } from '../../utils/fetchWrapper';
 import { questionActions } from './question.actions';
 
 export const questionModel = createModel(

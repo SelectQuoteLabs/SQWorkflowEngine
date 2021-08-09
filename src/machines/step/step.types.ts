@@ -1,14 +1,14 @@
 import { ActorRefFrom } from 'xstate';
 
-import { ConditionalActions } from 'types/evaluations';
+import { ConditionalActions } from '../../types/evaluations';
 import {
   DataSource,
   MultipleChoiceOptionValue,
   PrePopulatedResponse,
   QuestionType,
-} from 'types/questions';
-import { QuestionMachineRef } from 'machines/question/question.types';
-import { TextStepMachineRef } from 'machines/textStep.machine';
+} from '../../types/questions';
+import { QuestionMachineRef } from '../question/question.types';
+import { TextStepMachineRef } from '../textStep.machine';
 import stepMachine from './step.machine';
 
 export type StepMachineRef = ActorRefFrom<typeof stepMachine>;

@@ -1,10 +1,10 @@
 import { assign, actions } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 
-import { Workflow } from 'types/workflow';
+import { Workflow } from '../../types/workflow';
 import { WorkflowStep, StepSummary } from './workflow.types';
 import { workflowActions } from './workflow.actions';
-import { createSelector } from 'machines/utils';
+import { createSelector } from '../utils';
 
 type ErrorContext = { errorData: Error | null; message: string };
 
