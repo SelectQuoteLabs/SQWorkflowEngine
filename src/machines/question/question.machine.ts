@@ -1,19 +1,26 @@
-import { actions, assign } from 'xstate';
+import { assign, DoneInvokeEvent } from 'xstate';
 import { createModel } from 'xstate/lib/model';
-import { Moment } from 'moment';
+import { choose, respond } from 'xstate/lib/actions';
 
+import { ActionTypes } from 'types/actions';
 import {
   createSelector,
   createSelectorHook,
-  ExtractModelEvent,
   hasActionInQueue,
-} from '../utils';
-import { ActionTypes } from '../../types/actions';
-import { ConditionalActions } from '../../types/evaluations';
-import { ActionsQueueItem } from './question.types';
-import { DataSource, MultipleChoiceOptionValue } from '../../types/questions';
-import { fetchWrapper } from '../../utils/fetchWrapper';
+} from 'machines/utils';
+import {
+  ExtractQuestionEvent,
+  QuestionContext,
+  QuestionMachineRef,
+} from './question.types';
+import { DataSource } from 'types/questions';
+import { fetchWrapper } from 'utils/fetchWrapper';
 import { questionActions } from './question.actions';
+import {
+  EvaluatedConditional,
+  evaluatorMachine,
+  evaluatorModel,
+} from 'machines/evaluator.machine';
 
 export const questionModel = createModel(
   {
@@ -21,28 +28,30 @@ export const questionModel = createModel(
     questionID: '',
     initialVisibility: false,
     initialRequired: false,
-    onCompleteConditionalActions: [] as ConditionalActions[] | null,
+    onCompleteConditionalActions: [],
     initialValue: '',
-    value: '' as string | Moment,
-    actionsQueue: [] as ActionsQueueItem[],
+    value: '',
+    actionsQueue: [],
     isKnockout: false,
-    knockoutMessage: null as string | null,
-    dataSource: null as DataSource | null,
-    options: null as MultipleChoiceOptionValue[] | null,
+    knockoutMessage: null,
+    dataSource: null,
+    options: null,
     dataSourceDepValue: '',
-  },
+    conditionalRefs: [],
+    dataSourceRefs: [],
+  } as QuestionContext,
   {
     events: {
       REQUIRED: () => ({}),
       NOT_REQUIRED: () => ({}),
       SHOW: () => ({}),
       HIDE: () => ({}),
-      EVALUATE_COMPARISON: () => ({}),
       PARSE_CONDITIONAL_ACTIONS: () => ({}),
       FETCH_DATA_SOURCE: (value: string) => ({ value }),
-      SYNC_PARENT_WITH_CURRENT_VALUE: () => ({}),
-      UPDATE_PARENT_WITH_VALUE: () => ({}),
-      UPDATE_VALUE: (value: string | Moment) => ({ value }),
+      UPDATE_VALUE: (value: string) => ({ value }),
+      RECEIVE_CONDITIONAL_REFS: (refs: QuestionMachineRef[]) => ({ refs }),
+      RECEIVE_DATA_SOURCE_REFS: (refs: QuestionMachineRef[]) => ({ refs }),
+      PING_VALUE: () => ({}),
     },
   },
 );
@@ -52,6 +61,43 @@ const questionMachine = questionModel.createMachine(
     id: 'question',
     initial: 'initializing',
     context: questionModel.initialContext,
+    on: {
+      RECEIVE_CONDITIONAL_REFS: {
+        actions: [
+          questionModel.assign(
+            {
+              conditionalRefs: (_context, event) => event.refs,
+            },
+            'RECEIVE_CONDITIONAL_REFS',
+          ),
+        ],
+      },
+      RECEIVE_DATA_SOURCE_REFS: {
+        actions: [
+          questionModel.assign(
+            {
+              dataSourceRefs: (_context, event) => event.refs,
+            },
+            'RECEIVE_DATA_SOURCE_REFS',
+          ),
+          choose([
+            {
+              cond: (context): boolean => Boolean(context.initialValue),
+              actions: [questionActions.sendValueToDataSourceRefs],
+            },
+          ]),
+        ],
+      },
+      PING_VALUE: {
+        actions: [
+          respond((context) => ({
+            type: 'PONG_VALUE',
+            value: context.value,
+            fromQuestionID: context.questionID,
+          })),
+        ],
+      },
+    },
     states: {
       initializing: {
         id: 'initializing',
@@ -109,11 +155,6 @@ const questionMachine = questionModel.createMachine(
                       {
                         target: 'evaluatingConditionalActions',
                         cond: 'isUntouchedWithInitialValue',
-                        actions: [
-                          assign({
-                            value: (context) => context.initialValue,
-                          }),
-                        ],
                       },
                       { target: 'idle' },
                     ],
@@ -122,13 +163,21 @@ const questionMachine = questionModel.createMachine(
                     id: 'idle',
                     on: {
                       UPDATE_VALUE: {
-                        actions: [questionActions.updateValue],
-                      },
-                      UPDATE_PARENT_WITH_VALUE: {
-                        actions: [questionActions.updateParentWithValue],
-                      },
-                      SYNC_PARENT_WITH_CURRENT_VALUE: {
-                        actions: [questionActions.syncParentWithCurrentValue],
+                        actions: [
+                          choose([
+                            {
+                              cond: (context): boolean =>
+                                Boolean(context.dataSourceRefs.length),
+                              actions: [
+                                questionActions.updateValue,
+                                questionActions.sendValueToDataSourceRefs,
+                              ],
+                            },
+                            {
+                              actions: [questionActions.updateValue],
+                            },
+                          ]),
+                        ],
                       },
                       PARSE_CONDITIONAL_ACTIONS: {
                         target: 'evaluatingConditionalActions',
@@ -137,11 +186,51 @@ const questionMachine = questionModel.createMachine(
                   },
                   evaluatingConditionalActions: {
                     id: 'evaluatingConditionalActions',
-                    entry: [actions.send('EVALUATE_COMPARISON')],
-                    on: {
-                      EVALUATE_COMPARISON: {
+                    always: [
+                      {
+                        target: 'idle',
+                        actions: [
+                          assign({
+                            actionsQueue:
+                              questionModel.initialContext.actionsQueue,
+                          }),
+                        ],
+                        cond: (context): boolean =>
+                          !Boolean(
+                            context.onCompleteConditionalActions?.length,
+                          ),
+                      },
+                    ],
+                    invoke: {
+                      src: evaluatorMachine,
+                      data: (context) => {
+                        const {
+                          questionID,
+                          value,
+                          onCompleteConditionalActions,
+                          conditionalRefs,
+                        } = context;
+                        return {
+                          ...evaluatorModel.initialContext,
+                          parentQuestionID: questionID,
+                          parentValue: value,
+                          refs: conditionalRefs,
+                          parentConditionalActions:
+                            onCompleteConditionalActions,
+                        };
+                      },
+                      onDone: {
                         target: 'performingActions',
-                        actions: [questionActions.setActionsQueue],
+                        actions: [
+                          assign({
+                            actionsQueue: (
+                              _context,
+                              event: DoneInvokeEvent<{
+                                returnActions: EvaluatedConditional[];
+                              }>,
+                            ) => event.data.returnActions,
+                          }),
+                        ],
                       },
                     },
                   },
@@ -249,7 +338,15 @@ const questionMachine = questionModel.createMachine(
                     target: 'idle',
                     actions: [
                       questionActions.assignNewOptions,
-                      questionActions.updateParentWithResetValue,
+                      questionActions.assignValueFromDataSource,
+                      questionActions.sendParentSyncValues,
+                    ],
+                  },
+                  onError: {
+                    target: 'idle',
+                    actions: [
+                      questionActions.clearOptions,
+                      questionActions.sendParentSyncValues,
                     ],
                   },
                 },
@@ -291,7 +388,6 @@ const questionMachine = questionModel.createMachine(
       initiallyNotVisibleAndNotRequired: (context) =>
         !context.initialVisibility && !context.initialRequired,
       isUntouchedWithInitialValue: (context) =>
-        !context.value &&
         Boolean(context.initialValue) &&
         Boolean(context.onCompleteConditionalActions),
       /** Checks if a `failWorkflow` action is in the queue */
@@ -300,10 +396,10 @@ const questionMachine = questionModel.createMachine(
           ? hasActionInQueue(context.actionsQueue, ActionTypes.FAILWORKFLOW)
           : false,
       /** Checks if there are any actions in the queue */
-      hasActionsInQueue: (context) => Boolean(context.actionsQueue?.length),
+      hasActionsInQueue: (context) => Boolean(context.actionsQueue.length),
       isNewDepValue: (context, event): boolean =>
-        (event as ExtractModelEvent<typeof questionModel, 'FETCH_DATA_SOURCE'>)
-          .value !== context.dataSourceDepValue,
+        (event as ExtractQuestionEvent<'FETCH_DATA_SOURCE'>).value !==
+        context.dataSourceDepValue,
     },
   },
 );
