@@ -1,17 +1,23 @@
-import { ActorRefFrom } from 'xstate';
+import { ActorRefFrom, ContextFrom, EventFrom } from 'xstate';
 
-import { ConditionalActions } from '../../types/evaluations';
+import { ConditionalAction } from 'types/evaluations';
 import {
   DataSource,
   MultipleChoiceOptionValue,
   PrePopulatedResponse,
   QuestionType,
-} from '../../types/questions';
-import { QuestionMachineRef } from '../question/question.types';
-import { TextStepMachineRef } from '../textStep.machine';
-import stepMachine from './step.machine';
+} from 'types/questions';
+import { QuestionMachineRef } from 'machines/question/question.types';
+import { TextStepMachineRef } from 'machines/textStep.machine';
+import stepMachine, { stepModel } from './step.machine';
+import { ExtractModelEvent } from 'machines/utils';
 
 export type StepMachineRef = ActorRefFrom<typeof stepMachine>;
+
+export type StepContext = ContextFrom<typeof stepModel>;
+export type StepEvent = EventFrom<typeof stepModel>;
+export type ExtractStepEvent<Type extends StepEvent['type']> =
+  ExtractModelEvent<typeof stepModel, Type>;
 
 export interface StepQuestion {
   stepType: 'question';
@@ -19,9 +25,9 @@ export interface StepQuestion {
   questionID: string;
   isVisible: boolean;
   isRequired: boolean;
-  onCompleteConditionalActions: ConditionalActions[] | null;
+  onCompleteConditionalActions: ConditionalAction[] | null;
   prePopulatedResponse?: PrePopulatedResponse;
-  questionType?: QuestionType;
+  questionType: QuestionType;
   ref?: QuestionMachineRef;
   dataSource: DataSource | null;
   options: MultipleChoiceOptionValue[] | null;

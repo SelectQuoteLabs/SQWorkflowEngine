@@ -1,4 +1,4 @@
-import { assign, actions, sendParent, ContextFrom, EventFrom } from 'xstate';
+import { assign, actions } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 
 import {
@@ -8,24 +8,19 @@ import {
   UpdateMultipleStepsVisibilityAction,
   UpdateStepIsRequiredAction,
   UpdateStepVisibilityAction,
-} from '../../types/actions';
-import { Knockout } from './step.types';
+} from 'types/actions';
+import { StepTypes } from 'types/steps';
+import { Knockout, StepContext, StepEvent, StepQuestion } from './step.types';
 import {
   createSelector,
   createSelectorHook,
   ExtractModelEvent,
-  findActionInQueue,
-  hasActionInQueue,
-} from '../utils';
-import { ChildStep, StepSummary } from '../workflow/workflow.types';
-import { ActionsQueueItem } from '../question/question.types';
+} from 'machines/utils';
+import { findActionInQueue, hasActionInQueue } from 'machines/utils';
+import { ChildStep, StepSummary } from 'machines/workflow/workflow.types';
+import { ActionsQueueItem } from 'machines/question/question.types';
+import { syncFormValuesMachine } from 'machines/syncFormValuesMachine';
 import { stepActions } from './step.actions';
-import { workflowModel } from '../workflow/workflow.machine';
-
-export interface DataSourceDependency {
-  questionID: string;
-  originID: string;
-}
 
 export const stepModel = createModel(
   {
@@ -42,8 +37,8 @@ export const stepModel = createModel(
     knockouts: [] as Knockout[],
     questionActionsQueue: [] as ActionsQueueItem[],
     wasSubmitted: false,
-    dataSourceDependencies: [] as DataSourceDependency[],
     depInitialValuesSent: false,
+    submitErrorMessage: '',
   },
   {
     events: {
@@ -51,44 +46,36 @@ export const stepModel = createModel(
         values: Record<string, string>;
         stepSummary: StepSummary;
       }) => ({ payload }),
-      RECEIVE_VALUE_UPDATE: (questionID: string, value: string) => ({
-        questionID,
-        value,
-      }),
-      RECEIVE_SYNC_UPDATE: (questionID: string, value: string) => ({
-        questionID,
-        value,
-      }),
+      SYNC_VALUES: () => ({}),
       RECEIVE_QUESTION_UPDATE: (payload: {
         actionsQueue: ActionsQueueItem[];
         isKnockout: boolean;
         questionID: string;
       }) => ({ payload }),
       UPDATE_CHILD_STEP_VISIBILITY: (
-        updateStepVisibilityAction: UpdateStepVisibilityAction | undefined,
+        updateStepVisibilityAction: UpdateStepVisibilityAction,
         evaluationResult: boolean,
       ) => ({ updateStepVisibilityAction, evaluationResult }),
       UPDATE_CHILD_STEP_REQUIRED: (
-        updateStepIsRequiredAction: UpdateStepIsRequiredAction | undefined,
+        updateStepIsRequiredAction: UpdateStepIsRequiredAction,
         evaluationResult: boolean,
       ) => ({ updateStepIsRequiredAction, evaluationResult }),
       REMOVE_ACTION_FROM_QUEUE: (actionToRemove: Action) => ({
         actionToRemove,
       }),
       UPDATE_MULTI_STEP_VISIBILITY: (
-        updateMultiStepVisibilityAction:
-          | UpdateMultipleStepsVisibilityAction
-          | undefined,
+        updateMultiStepVisibilityAction: UpdateMultipleStepsVisibilityAction,
         evaluationResult: boolean,
       ) => ({ updateMultiStepVisibilityAction, evaluationResult }),
       UPDATE_MULTI_STEP_REQUIRED: (
-        updateMultiStepRequiredAction:
-          | UpdateMultipleStepsIsRequiredAction
-          | undefined,
+        updateMultiStepRequiredAction: UpdateMultipleStepsIsRequiredAction,
         evaluationResult: boolean,
       ) => ({ updateMultiStepRequiredAction, evaluationResult }),
       SEND_RESPONSES_SUCCESS: () => ({}),
       SEND_APPLICATION_SUCCESS: () => ({}),
+      SUBMISSION_FAILED: (errorMessage: string) => ({ errorMessage }),
+      RETRY: () => ({}),
+      BACK: () => ({}),
     },
   },
 );
@@ -103,75 +90,30 @@ const stepMachine = stepModel.createMachine(
         target: '#checkingActionsQueue',
         actions: [stepActions.setUpdatesFromQuestionToContext],
       },
-      RECEIVE_SYNC_UPDATE: {
-        actions: [stepActions.updateValues],
-      },
-      RECEIVE_VALUE_UPDATE: {
-        actions: [
-          stepActions.updateValues,
-          actions.choose([
-            {
-              // updated value is in dependencies and not empty
-              cond: (
-                context,
-                event: ExtractModelEvent<
-                  typeof stepModel,
-                  'RECEIVE_VALUE_UPDATE'
-                >,
-              ): boolean => {
-                const { dataSourceDependencies } = context;
-                const { questionID, value } = event;
-                if (!value) {
-                  return false;
-                }
-
-                return Boolean(
-                  dataSourceDependencies?.some(
-                    (dependency) => dependency.questionID === questionID,
-                  ),
-                );
-              },
-              actions: [
-                stepActions.sendDataSourceDepUpdate,
-                stepActions.requestSyncAllValues,
-                stepActions.setHasNewValues(true),
-              ],
-            },
-          ]),
-        ],
-      },
     },
     states: {
       initializing: {
         id: 'initializing',
         entry: [
           stepActions.setInitialValues,
-          stepActions.setDataSourceDependencies,
           stepActions.initializeChildSteps,
+          stepActions.sendConditionalRefs,
+          stepActions.sendDataSourceRefs,
         ],
         always: [{ target: 'initialized' }],
       },
       initialized: {
         id: 'initialized',
         type: 'parallel',
-        always: [
-          {
-            cond: (context): boolean => !Boolean(context.depInitialValuesSent),
-            actions: [
-              stepActions.sendDepInitialValuesToDataSources,
-              assign<
-                ContextFrom<typeof stepModel>,
-                EventFrom<typeof stepModel>
-              >({
-                depInitialValuesSent: true,
-              }),
-            ],
-          },
-        ],
         states: {
           form: {
             id: 'form',
             initial: 'idle',
+            on: {
+              SYNC_VALUES: {
+                target: '#form.syncingValues',
+              },
+            },
             states: {
               idle: {
                 id: 'idle',
@@ -182,9 +124,46 @@ const stepMachine = stepModel.createMachine(
                   },
                 },
               },
+              syncingValues: {
+                invoke: {
+                  src: syncFormValuesMachine,
+                  data: (context) => {
+                    const { childSteps, values } = context;
+                    const questionRefs = childSteps
+                      .filter(
+                        (childStep): childStep is StepQuestion =>
+                          childStep.stepType === StepTypes.QUESTION,
+                      )
+                      .map((childStep) => childStep.ref);
+
+                    return {
+                      currentValues: values,
+                      questionRefs,
+                    };
+                  },
+                  onDone: {
+                    target: '#idle',
+                    actions: [stepActions.assignReturnedValues],
+                  },
+                  onError: {
+                    target: '#idle',
+                  },
+                },
+              },
               submitting: {
                 id: 'submitting',
                 initial: 'checkingSubmittedValues',
+                on: {
+                  SUBMISSION_FAILED: {
+                    target: '#form.submittingFailed',
+                    actions: [
+                      stepModel.assign({
+                        submitErrorMessage: (_context, event) =>
+                          event.errorMessage,
+                      }),
+                    ],
+                  },
+                },
                 states: {
                   checkingSubmittedValues: {
                     always: [
@@ -209,10 +188,7 @@ const stepMachine = stepModel.createMachine(
                         target: '#idle',
                         actions: [
                           stepActions.sendSummaryToParent,
-                          assign<
-                            ContextFrom<typeof stepModel>,
-                            EventFrom<typeof stepModel>
-                          >((context) => ({
+                          assign<StepContext, StepEvent>((context) => ({
                             parentUpdated: true,
                           })),
                           stepActions.sendParentNextStep,
@@ -233,7 +209,7 @@ const stepMachine = stepModel.createMachine(
                           actions: [
                             stepActions.sendSummaryToParent,
                             assign<
-                              ContextFrom<typeof stepModel>,
+                              StepContext,
                               ExtractModelEvent<
                                 typeof stepModel,
                                 'SEND_RESPONSES_SUCCESS'
@@ -241,20 +217,6 @@ const stepMachine = stepModel.createMachine(
                             >({
                               hasNewValues: false,
                               parentUpdated: true,
-                            }),
-                            sendParent<
-                              ContextFrom<typeof stepModel>,
-                              ExtractModelEvent<
-                                typeof stepModel,
-                                'SEND_RESPONSES_SUCCESS'
-                              >,
-                              ExtractModelEvent<
-                                typeof workflowModel,
-                                'SET_SUCCESS_MESSAGE'
-                              >
-                            >({
-                              type: 'SET_SUCCESS_MESSAGE',
-                              message: 'Responses saved successfully',
                             }),
                           ],
                         },
@@ -274,20 +236,6 @@ const stepMachine = stepModel.createMachine(
                               parentUpdated: true,
                             }),
                             stepActions.sendParentNextStep,
-                            sendParent<
-                              ContextFrom<typeof stepModel>,
-                              ExtractModelEvent<
-                                typeof stepModel,
-                                'SEND_APPLICATION_SUCCESS'
-                              >,
-                              ExtractModelEvent<
-                                typeof workflowModel,
-                                'SET_SUCCESS_MESSAGE'
-                              >
-                            >({
-                              type: 'SET_SUCCESS_MESSAGE',
-                              message: 'Application submitted successfully',
-                            }),
                           ],
                         },
                         {
@@ -296,6 +244,20 @@ const stepMachine = stepModel.createMachine(
                         },
                       ],
                     },
+                  },
+                  hist: {
+                    type: 'history',
+                  },
+                },
+              },
+              submittingFailed: {
+                on: {
+                  RETRY: {
+                    target: '#submitting.hist',
+                  },
+                  BACK: {
+                    target: '#idle',
+                    actions: [stepModel.assign({ submitErrorMessage: '' })],
                   },
                 },
               },
@@ -598,8 +560,8 @@ export const getKnockouts = createStepSelector(
   (state) => state.context.knockouts,
 );
 
-export const getDataSourceDependencies = createStepSelector(
-  (state) => state.context.dataSourceDependencies,
+export const getSubmitErrorMessage = createStepSelector(
+  (state) => state.context.submitErrorMessage,
 );
 
 export const getIsCancelled = createStepSelector((state) =>
@@ -616,8 +578,24 @@ export const getIsSubmittingApplication = createStepSelector((state) =>
   }),
 );
 
+export const getWasSubmittingApplication = createStepSelector((state) =>
+  state.history?.matches({
+    initialized: { form: { submitting: 'submittingApplication' } },
+  }),
+);
+
 export const getIsSendingWorkflowResponses = createStepSelector((state) =>
   state.matches({
     initialized: { form: { submitting: 'sendingWorkflowResponses' } },
   }),
+);
+
+export const getWasSendingWorkflowResponses = createStepSelector((state) =>
+  state.history?.matches({
+    initialized: { form: { submitting: 'sendingWorkflowResponses' } },
+  }),
+);
+
+export const getIsSubmittingFailed = createStepSelector((state) =>
+  state.matches({ initialized: { form: 'submittingFailed' } }),
 );

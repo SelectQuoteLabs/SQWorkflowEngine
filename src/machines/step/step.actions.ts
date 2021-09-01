@@ -1,38 +1,32 @@
-import { actions, AssignAction, ContextFrom, EventFrom, spawn } from 'xstate';
+import { actions, DoneInvokeEvent, spawn } from 'xstate';
 
-import { ExtractModelEvent, shallowCompare } from '../utils';
-import { Knockout, StepQuestion, StepText } from './step.types';
-import { StepTypes } from '../../types/steps';
-import { textStepMachine } from '../textStep.machine';
-import { workflowModel } from '../workflow/workflow.machine';
-import { questionModel } from '../question/question.machine';
-import questionMachine from '../question';
-import { stepModel } from './step.machine';
-
-const setHasNewValues = (
-  value: boolean,
-): AssignAction<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'RECEIVE_VALUE_UPDATE'>
-> =>
-  actions.assign<
-    ContextFrom<typeof stepModel>,
-    ExtractModelEvent<typeof stepModel, 'RECEIVE_VALUE_UPDATE'>
-  >({
-    hasNewValues: value,
-  });
+import { shallowCompare } from 'machines/utils';
+import {
+  ExtractStepEvent,
+  Knockout,
+  StepContext,
+  StepEvent,
+  StepQuestion,
+} from './step.types';
+import { StepTypes } from 'types/steps';
+import { EvaluationTypes } from 'types/evaluations';
+import { ExtractWorkflowEvent } from 'machines/workflow/workflow.types';
+import { textStepMachine } from 'machines/textStep.machine';
+import { questionModel } from 'machines/question/question.machine';
+import questionMachine from 'machines/question';
 
 /** The 'SUBMIT' event is sent with the form's values and the `stepSummary`, this action assigns those to the machine context */
 const setFormDetailsToContext = actions.assign<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'SUBMIT'>
+  StepContext,
+  ExtractStepEvent<'SUBMIT'>
 >((context, event) => {
   const hasNewValues =
     context.hasNewValues ||
-    (!shallowCompare(event.payload.values, context.values) &&
-      !shallowCompare(event.payload.values, context.initialValues));
+    !shallowCompare(event.payload.values, context.initialValues);
+
   return {
     values: event.payload.values,
+    initialValues: event.payload.values,
     stepSummary: event.payload.stepSummary,
     hasNewValues,
     parentUpdated: hasNewValues,
@@ -45,13 +39,13 @@ const setFormDetailsToContext = actions.assign<
  * and the knockout state that may have changed based on the question's value.
  */
 const setUpdatesFromQuestionToContext = actions.assign<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'RECEIVE_QUESTION_UPDATE'>
+  StepContext,
+  ExtractStepEvent<'RECEIVE_QUESTION_UPDATE'>
 >((context, event) => {
   const { questionActionsQueue } = context;
   const { actionsQueue, isKnockout, questionID } = event.payload;
 
-  const updatedQueue = [...(questionActionsQueue || []), ...actionsQueue];
+  const updatedQueue = [...questionActionsQueue, ...actionsQueue];
 
   const newKnockout = { isKnockout, questionID };
   return {
@@ -62,14 +56,14 @@ const setUpdatesFromQuestionToContext = actions.assign<
 
 /** Creates an updated queue with the `actionToRemove` removed and assigns it to `questionActionsQueue` */
 const removeActionFromQueue = actions.assign<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'REMOVE_ACTION_FROM_QUEUE'>
+  StepContext,
+  ExtractStepEvent<'REMOVE_ACTION_FROM_QUEUE'>
 >((context, event) => {
   const { questionActionsQueue } = context;
   const { actionToRemove } = event;
 
   const updatedQueue = questionActionsQueue
-    ?.map((questionAction) => {
+    .map((questionAction) => {
       return questionAction.actions.includes(actionToRemove)
         ? {
             ...questionAction,
@@ -91,85 +85,35 @@ const removeActionFromQueue = actions.assign<
 });
 
 /** Set the `initialValues` for the form within the step based on the step's questions */
-const setInitialValues = actions.assign<
-  ContextFrom<typeof stepModel>,
-  EventFrom<typeof stepModel>
->((context) => {
+const setInitialValues = actions.assign<StepContext, StepEvent>((context) => {
   const { childSteps } = context;
   const questions = childSteps
-    ?.filter(
+    .filter(
       (childStep): childStep is StepQuestion =>
         childStep.stepType === StepTypes.QUESTION,
     )
     .map((question) => {
-      const getValue = (value?: string | boolean): string => {
-        if (typeof value === 'boolean') {
-          return value ? 'yes' : 'no';
-        } else if (!value) {
-          return '';
-        } else {
-          return value;
-        }
-      };
       // Parses the question's `prePopulatedResponse` value, if it exists, to determine what the initial value should be
       const value = getValue(question.prePopulatedResponse?.value);
       return [question.questionID, value];
     });
 
-  const valuesObject = questions ? Object.fromEntries(questions) : {};
+  const valuesObject = Object.fromEntries(questions);
   return {
     initialValues: valuesObject,
     values: valuesObject,
   };
 });
 
-/** Creates array of all dataSource dependency questionIDs */
-const setDataSourceDependencies = actions.assign<
-  ContextFrom<typeof stepModel>,
-  EventFrom<typeof stepModel>
->({
-  dataSourceDependencies: (context) => {
-    const { childSteps } = context;
-    const dependencies = childSteps
-      ?.filter(
-        (childStep): childStep is StepQuestion =>
-          childStep.stepType === StepTypes.QUESTION &&
-          Boolean(childStep.dataSource),
-      )
-      .map((questionStep) => {
-        const { dataSource, id } = questionStep;
-        const [questionID] =
-          dataSource?.queryStringParameters.map((item) => item.questionId) ??
-          [];
-
-        return {
-          questionID,
-          originID: id,
-        };
-      })
-      .filter(
-        (
-          dependency,
-        ): dependency is {
-          questionID: string;
-          originID: string;
-        } => !!dependency,
-      );
-    return dependencies;
-  },
-});
-
 /** Spawns all of the question and text subSteps, each with the initial context that they need */
-const initializeChildSteps = actions.assign<
-  ContextFrom<typeof stepModel>,
-  EventFrom<typeof stepModel>
->((context) => {
-  const { childSteps } = context;
-  return {
-    childSteps:
-      childSteps &&
-      childSteps.map((childStep) => {
+const initializeChildSteps = actions.assign<StepContext, StepEvent>(
+  (context) => {
+    const { childSteps } = context;
+    return {
+      childSteps: childSteps.map((childStep) => {
         if (childStep.stepType === StepTypes.QUESTION) {
+          const initialValue = getValue(childStep.prePopulatedResponse?.value);
+
           return {
             ...childStep,
             ref: spawn(
@@ -179,13 +123,14 @@ const initializeChildSteps = actions.assign<
                 questionID: childStep.questionID,
                 initialVisibility: childStep.isVisible,
                 initialRequired: childStep.isRequired,
-                initialValue: getValue(childStep.prePopulatedResponse?.value),
+                initialValue,
+                value: initialValue,
                 onCompleteConditionalActions:
                   childStep.onCompleteConditionalActions,
                 dataSource: childStep.dataSource,
               }),
-              `question-${childStep.id}`,
-            ) as StepQuestion['ref'],
+              childStep.id,
+            ),
           };
         } else {
           return {
@@ -195,32 +140,22 @@ const initializeChildSteps = actions.assign<
                 id: childStep.id,
                 initialVisibility: childStep.isVisible,
               }),
-              `text-${childStep.id}`,
-            ) as StepText['ref'],
+              childStep.id,
+            ),
           };
         }
       }),
-  };
-});
-
-const updateValues = actions.assign<
-  ContextFrom<typeof stepModel>,
-  | ExtractModelEvent<typeof stepModel, 'RECEIVE_VALUE_UPDATE'>
-  | ExtractModelEvent<typeof stepModel, 'RECEIVE_SYNC_UPDATE'>
->({
-  values: (context, event) => ({
-    ...context.values,
-    [event.questionID]: event.value,
-  }),
-});
+    };
+  },
+);
 
 /** Send data to parent workflowMachine */
 const sendSummaryToParent = actions.sendParent<
-  ContextFrom<typeof stepModel>,
-  | EventFrom<typeof stepModel>
-  | ExtractModelEvent<typeof stepModel, 'SEND_RESPONSES_SUCCESS'>
-  | ExtractModelEvent<typeof stepModel, 'SEND_APPLICATION_SUCCESS'>,
-  ExtractModelEvent<typeof workflowModel, 'RECEIVE_STEP_SUMMARY'>
+  StepContext,
+  | StepEvent
+  | ExtractStepEvent<'SEND_RESPONSES_SUCCESS'>
+  | ExtractStepEvent<'SEND_APPLICATION_SUCCESS'>,
+  ExtractWorkflowEvent<'RECEIVE_STEP_SUMMARY'>
 >((context) => {
   const { stepSummary, stepID } = context;
   return {
@@ -231,111 +166,24 @@ const sendSummaryToParent = actions.sendParent<
 });
 
 const sendParentNextStep = actions.sendParent<
-  ContextFrom<typeof stepModel>,
-  | EventFrom<typeof stepModel>
-  | ExtractModelEvent<typeof stepModel, 'SEND_APPLICATION_SUCCESS'>,
-  ExtractModelEvent<typeof workflowModel, 'GO_TO_STEP'>
->((context: ContextFrom<typeof stepModel>) => ({
+  StepContext,
+  StepEvent | ExtractStepEvent<'SEND_APPLICATION_SUCCESS'>,
+  ExtractWorkflowEvent<'GO_TO_STEP'>
+>((context: StepContext) => ({
   type: 'GO_TO_STEP',
   stepID: context.nextStepID,
 }));
-
-const sendDepInitialValuesToDataSources = actions.pure<
-  ContextFrom<typeof stepModel>,
-  EventFrom<typeof stepModel>
->((context) => {
-  const { initialValues, childSteps } = context;
-  return initialValues
-    ? context.dataSourceDependencies?.map((dependency) => {
-        const { questionID, originID } = dependency;
-
-        return actions.send(
-          {
-            type: initialValues[questionID] ? 'FETCH_DATA_SOURCE' : '',
-            value: initialValues[questionID],
-          },
-          {
-            to: () => {
-              const { ref } =
-                childSteps?.find((childStep) => childStep.id === originID) ??
-                {};
-              if (typeof ref === 'undefined') {
-                throw new Error(`childStep ${originID} ref is undefined`);
-              }
-              return ref;
-            },
-          },
-        );
-      })
-    : undefined;
-});
-
-const requestSyncAllValues = actions.pure<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'RECEIVE_VALUE_UPDATE'>
->((context) => {
-  return context.childSteps
-    ?.filter(
-      (childStep): childStep is StepQuestion =>
-        childStep.stepType === StepTypes.QUESTION,
-    )
-    .map((childStep) => {
-      const { ref, id } = childStep;
-      if (typeof ref === 'undefined') {
-        throw new Error(`childStep ${id} ref is undefined`);
-      }
-      return actions.send(
-        {
-          type: 'SYNC_PARENT_WITH_CURRENT_VALUE',
-        },
-        {
-          to: (_context) => ref,
-        },
-      );
-    });
-});
-
-const sendDataSourceDepUpdate = actions.send<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'RECEIVE_VALUE_UPDATE'>
->(
-  (_context, event) => ({
-    type: 'FETCH_DATA_SOURCE',
-    value: event.value,
-  }),
-  {
-    to: (context, event) => {
-      const { dataSourceDependencies, childSteps } = context;
-      const childID = dataSourceDependencies?.find(
-        (dependency) => dependency.questionID === event.questionID,
-      )?.originID;
-      if (typeof childID === 'undefined') {
-        throw new Error('dataSource origin ID is undefined');
-      }
-      const ref = childSteps?.find(
-        (childStep) => childStep.id === childID,
-      )?.ref;
-      if (typeof ref === 'undefined') {
-        throw new Error('ref of dataSource origin ID is undefined');
-      }
-      return ref;
-    },
-  },
-);
 
 /**
  * With the action and evaluation result from the event, this action determines which event to send to which child question/text machine.
  * https://xstate.js.org/docs/guides/actors.html#sending-events-to-actors
  */
 const updateChildStepVisibility = actions.send<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'UPDATE_CHILD_STEP_VISIBILITY'>
+  StepContext,
+  ExtractStepEvent<'UPDATE_CHILD_STEP_VISIBILITY'>
 >(
   (_context, event) => {
     const { updateStepVisibilityAction, evaluationResult } = event;
-    if (typeof updateStepVisibilityAction === 'undefined') {
-      throw new Error('updateStepVisibilityAction not found');
-    }
     /**
      * If the `evaluationResult` and the action's `isVisible` property is true we want set the event `type` to 'SHOW' to tell the child
      * step to become visible. Otherwise, set it to 'HIDE' to tell the child step it should not be visible.
@@ -355,35 +203,24 @@ const updateChildStepVisibility = actions.send<
        */
       const { childSteps } = context;
       const { updateStepVisibilityAction } = event;
-      const { ref, id } =
-        childSteps?.find(
-          (childStep) => childStep.id === updateStepVisibilityAction?.stepId,
+      const { id } =
+        childSteps.find(
+          (childStep) => childStep.id === updateStepVisibilityAction.stepId,
         ) ?? {};
-      if (typeof ref === 'undefined') {
-        throw new Error(`childStep ${id} ref is undefined`);
-      }
-      return ref;
+      return id ?? '';
     },
   },
 );
 
 const updateMultiStepChildVisibility = actions.pure<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'UPDATE_MULTI_STEP_VISIBILITY'>
+  StepContext,
+  ExtractStepEvent<'UPDATE_MULTI_STEP_VISIBILITY'>
 >((context, event) => {
-  const { childSteps } = context;
   const { updateMultiStepVisibilityAction, evaluationResult } = event;
-  if (typeof updateMultiStepVisibilityAction === 'undefined') {
-    throw new Error('updateMultiStepVisibilityAction not found');
-  }
   /**
    * With `pure` you need to return the map, otherwise all the `send` actions within the map never get invoked
    */
-  return updateMultiStepVisibilityAction.stepIds.map((stepID) => {
-    const ref = childSteps?.find((childStep) => childStep.id === stepID)?.ref;
-    if (typeof ref === 'undefined') {
-      throw new Error(`childStep ${stepID} ref is undefined`);
-    }
+  return updateMultiStepVisibilityAction.stepIds.map((id) => {
     return actions.send(
       {
         type:
@@ -392,7 +229,7 @@ const updateMultiStepChildVisibility = actions.pure<
             : 'HIDE',
       },
       {
-        to: () => ref,
+        to: id,
       },
     );
   });
@@ -400,101 +237,181 @@ const updateMultiStepChildVisibility = actions.pure<
 
 /** This action is almost exactly the same as `updateChildStepVisibility` */
 const updateChildStepRequired = actions.send<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'UPDATE_CHILD_STEP_REQUIRED'>
+  StepContext,
+  ExtractStepEvent<'UPDATE_CHILD_STEP_REQUIRED'>
 >(
   (_context, event) => {
     const { updateStepIsRequiredAction, evaluationResult } = event;
-    if (typeof updateStepIsRequiredAction === 'undefined') {
-      throw new Error('updateStepRequiredAction not found');
-    }
 
-    let type: string;
     if (
       (evaluationResult && updateStepIsRequiredAction.isRequired) ||
       (!evaluationResult && !updateStepIsRequiredAction.isRequired)
     ) {
-      type = 'REQUIRED';
+      return { type: 'REQUIRED' };
     } else {
-      type = 'NOT_REQUIRED';
+      return { type: 'NOT_REQUIRED' };
     }
-    return {
-      type,
-    };
   },
   {
     to: (context, event) => {
       const { childSteps } = context;
       const { updateStepIsRequiredAction } = event;
-      const { ref, id } =
-        childSteps?.find(
-          (childStep) => childStep.id === updateStepIsRequiredAction?.stepId,
+      const { id } =
+        childSteps.find(
+          (childStep) => childStep.id === updateStepIsRequiredAction.stepId,
         ) ?? {};
-      if (typeof ref === 'undefined') {
-        throw new Error(`childStep ${id} ref is undefined`);
-      }
-      return ref;
+
+      return id ?? '';
     },
   },
 );
 
 const updateMultiStepChildRequired = actions.pure<
-  ContextFrom<typeof stepModel>,
-  ExtractModelEvent<typeof stepModel, 'UPDATE_MULTI_STEP_REQUIRED'>
+  StepContext,
+  ExtractStepEvent<'UPDATE_MULTI_STEP_REQUIRED'>
 >((context, event) => {
-  const { childSteps } = context;
   const { updateMultiStepRequiredAction, evaluationResult } = event;
 
-  if (typeof updateMultiStepRequiredAction === 'undefined') {
-    throw new Error('updateMultiStepRequiredAction not found');
-  }
-
-  return updateMultiStepRequiredAction.stepIds.map((stepID) => {
-    const ref = childSteps?.find((childStep) => childStep.id === stepID)?.ref;
-
-    if (typeof ref === 'undefined') {
-      throw new Error(`childStep ${stepID} ref is undefined`);
-    }
-
-    let type: string;
-    if (
+  return updateMultiStepRequiredAction.stepIds.map((id) => {
+    const type =
       (evaluationResult && updateMultiStepRequiredAction.isRequired) ||
       (!evaluationResult && !updateMultiStepRequiredAction.isRequired)
-    ) {
-      type = 'REQUIRED';
-    } else {
-      type = 'NOT_REQUIRED';
-    }
+        ? 'REQUIRED'
+        : 'NOT_REQUIRED';
 
     return actions.send(
       {
         type,
       },
       {
-        to: () => ref,
+        to: id,
       },
     );
   });
 });
 
+const sendDataSourceRefs = actions.pure<StepContext, StepEvent>((context) => {
+  const questionsArray = context.childSteps.filter(
+    (childStep): childStep is StepQuestion =>
+      childStep.stepType === StepTypes.QUESTION,
+  );
+
+  const questionsWithDataSource = questionsArray.filter((question) =>
+    Boolean(question.dataSource),
+  );
+
+  const valueSourceQuestionIDs = [
+    ...new Set(
+      questionsWithDataSource
+        .flatMap((question) => {
+          return question.dataSource?.queryStringParameters.map(
+            (param) => param.questionId,
+          );
+        })
+        .filter(Boolean),
+    ),
+  ];
+
+  const dataSourceDependencyMap = Object.fromEntries(
+    valueSourceQuestionIDs.map((valueSourceQuestionID) => {
+      const refsOfQuestionsThatNeedValue = questionsWithDataSource
+        .filter((question) => {
+          const { dataSource } = question;
+          return dataSource?.queryStringParameters.some(
+            (param) => param.questionId === valueSourceQuestionID,
+          );
+        })
+        .map((question) => question.ref);
+
+      return [valueSourceQuestionID, refsOfQuestionsThatNeedValue];
+    }),
+  );
+
+  return Object.keys(dataSourceDependencyMap).map((valueSourceQuestionID) => {
+    const { id: machineID } =
+      questionsArray.find(
+        (question) => question.questionID === valueSourceQuestionID,
+      ) ?? {};
+
+    return actions.send(
+      {
+        type: 'RECEIVE_DATA_SOURCE_REFS',
+        refs: dataSourceDependencyMap[valueSourceQuestionID],
+      },
+      {
+        to: machineID ?? '',
+      },
+    );
+  });
+});
+
+const sendConditionalRefs = actions.pure<StepContext, StepEvent>((context) => {
+  return context.childSteps
+    .filter(
+      (childStep): childStep is StepQuestion =>
+        childStep.stepType === StepTypes.QUESTION,
+    )
+    .map((childStep, _index, childStepsArray) => {
+      const { id, onCompleteConditionalActions } = childStep;
+
+      const allQuestionIDs = onCompleteConditionalActions?.reduce(
+        (acc: string[], item) => {
+          const { evaluation } = item;
+
+          if (evaluation.evaluationType === EvaluationTypes.QUESTION) {
+            acc.push(evaluation.questionId);
+          } else if (evaluation.evaluationType === EvaluationTypes.GROUP) {
+            const questionIDs = evaluation.evaluations.map(
+              (item) => item.questionId,
+            );
+            acc.push(...questionIDs);
+          }
+
+          return acc;
+        },
+        [],
+      );
+
+      const uniqueQuestionIDs = [...new Set(allQuestionIDs)].filter(
+        (questionID) => questionID !== childStep.questionID,
+      );
+
+      const refs = uniqueQuestionIDs.map((questionID) => {
+        return childStepsArray.find((step) => step.questionID === questionID)
+          ?.ref;
+      });
+
+      return actions.send(
+        { type: 'RECEIVE_CONDITIONAL_REFS', refs },
+        { to: Boolean(refs.length) ? id : '' },
+      );
+    });
+});
+
+const assignReturnedValues = actions.assign({
+  values: (
+    _context,
+    event: DoneInvokeEvent<{
+      returnValues: StepContext['values'];
+    }>,
+  ) => event.data.returnValues,
+});
+
 export const stepActions = {
-  setHasNewValues,
   setFormDetailsToContext,
   setUpdatesFromQuestionToContext,
   removeActionFromQueue,
   setInitialValues,
-  setDataSourceDependencies,
   initializeChildSteps,
-  updateValues,
   sendSummaryToParent,
   sendParentNextStep,
-  sendDepInitialValuesToDataSources,
-  requestSyncAllValues,
-  sendDataSourceDepUpdate,
   updateChildStepVisibility,
   updateMultiStepChildVisibility,
   updateChildStepRequired,
   updateMultiStepChildRequired,
+  sendConditionalRefs,
+  sendDataSourceRefs,
+  assignReturnedValues,
 };
 
 const getValue = (value?: string | boolean): string => {
