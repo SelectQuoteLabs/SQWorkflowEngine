@@ -16,16 +16,26 @@ export const LogicalOperators = {
 } as const;
 type LogicalOperator = UnionFromKeys<typeof LogicalOperators>;
 
-export interface ConditionalActions {
+export interface ConditionalAction {
   evaluation: Evaluation;
   actions: Action[];
 }
+
+export type QuestionConditional = Omit<ConditionalAction, 'evaluation'> & {
+  evaluation: QuestionEvaluation;
+};
+export type GroupConditional = Omit<ConditionalAction, 'evaluation'> & {
+  evaluation: GroupEvaluation;
+};
+export type AlwaysTrueConditional = Omit<ConditionalAction, 'evaluation'> & {
+  evaluation: AutomaticEvaluation;
+};
 
 interface EvaluationBase<Type extends EvaluationType> {
   evaluationType: Type;
 }
 
-interface EvaluationGroup extends EvaluationBase<'group'> {
+interface GroupEvaluation extends EvaluationBase<'group'> {
   logicalOperator: LogicalOperator;
   evaluations: QuestionEvaluation[];
 }
@@ -40,6 +50,6 @@ interface AutomaticEvaluation extends EvaluationBase<'alwaysTrue'> {
 }
 
 export type Evaluation =
-  | EvaluationGroup
+  | GroupEvaluation
   | QuestionEvaluation
   | AutomaticEvaluation;
