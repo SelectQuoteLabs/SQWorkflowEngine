@@ -1,4 +1,16 @@
-import { StepQuestion, StepText, StepMachineRef } from '../step/step.types';
+import {
+  StepQuestion,
+  StepText,
+  StepMachineRef,
+} from 'machines/step/step.types';
+import { ExtractModelEvent } from 'machines/utils';
+import { ContextFrom, EventFrom } from 'xstate';
+import { workflowModel } from './workflow.machine';
+
+export type WorkflowContext = ContextFrom<typeof workflowModel>;
+type WorkflowEvent = EventFrom<typeof workflowModel>;
+export type ExtractWorkflowEvent<Type extends WorkflowEvent['type']> =
+  ExtractModelEvent<typeof workflowModel, Type>;
 
 export interface QuestionDetails {
   questionID: string;

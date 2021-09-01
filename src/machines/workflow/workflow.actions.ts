@@ -1,25 +1,16 @@
-import { actions, spawn, ContextFrom, EventFrom } from 'xstate';
+import { actions, spawn } from 'xstate';
 
-import { ExtractModelEvent } from '../utils';
-import { ActionTypes, NextStepAction } from '../../types/actions';
-import { QuestionTypes } from '../../types/questions';
+import { ActionTypes, NextStepAction } from 'types/actions';
+import { QuestionTypes } from 'types/questions';
+import { GroupStep, QuestionStep, TextStep, StepTypes } from 'types/steps';
 import {
-  GroupStep,
-  QuestionStep,
-  TextStep,
-  StepTypes,
-} from '../../types/steps';
-import { ChildStep, WorkflowStep } from './workflow.types';
-import { workflowModel } from './workflow.machine';
-import stepMachine from '../step';
-import { stepModel } from '../step/step.machine';
-
-const clearGlobalLoadingMessage = actions.assign<
-  ContextFrom<typeof workflowModel>,
-  EventFrom<typeof workflowModel>
->({
-  globalLoadingMessage: '',
-});
+  ChildStep,
+  ExtractWorkflowEvent,
+  WorkflowContext,
+  WorkflowStep,
+} from './workflow.types';
+import stepMachine from 'machines/step';
+import { stepModel } from 'machines/step/step.machine';
 
 /**
  * Using the data returned from the invoked fetchWorkflow promise, create a steps array that includes all of the data needed for each
@@ -27,8 +18,8 @@ const clearGlobalLoadingMessage = actions.assign<
  * the `firstStepID` from the workflow data to the `currentStepID` property in context.
  */
 const setStepsData = actions.assign<
-  ContextFrom<typeof workflowModel>,
-  ExtractModelEvent<typeof workflowModel, 'RECEIVE_WORKFLOW_DATA'>
+  WorkflowContext,
+  ExtractWorkflowEvent<'RECEIVE_WORKFLOW_DATA'>
 >((_context, event) => {
   if (!event.data) {
     return {};
@@ -44,8 +35,8 @@ const setStepsData = actions.assign<
 });
 
 const spawnAllSteps = actions.assign<
-  ContextFrom<typeof workflowModel>,
-  ExtractModelEvent<typeof workflowModel, 'RECEIVE_WORKFLOW_DATA'>
+  WorkflowContext,
+  ExtractWorkflowEvent<'RECEIVE_WORKFLOW_DATA'>
 >((context) => {
   const { steps, applicationSubmitted } = context;
   return {
@@ -66,7 +57,7 @@ const spawnAllSteps = actions.assign<
             applicationSubmitted,
           }),
           step.stepName,
-        ) as WorkflowStep['ref'],
+        ),
       };
     }),
   };
@@ -78,8 +69,8 @@ const spawnAllSteps = actions.assign<
  * potentially be included in the payload.
  */
 const updateStepSummary = actions.assign<
-  ContextFrom<typeof workflowModel>,
-  ExtractModelEvent<typeof workflowModel, 'RECEIVE_STEP_SUMMARY'>
+  WorkflowContext,
+  ExtractWorkflowEvent<'RECEIVE_STEP_SUMMARY'>
 >((context, event) => {
   const { stepSummary, stepID } = event;
 
@@ -93,14 +84,13 @@ const updateStepSummary = actions.assign<
 
 /** Assigns the `currentStepID` to the `stepID` that was sent along with the event */
 const setCurrentStep = actions.assign<
-  ContextFrom<typeof workflowModel>,
-  ExtractModelEvent<typeof workflowModel, 'GO_TO_STEP'>
+  WorkflowContext,
+  ExtractWorkflowEvent<'GO_TO_STEP'>
 >({
   currentStepID: (_context, event) => event.stepID,
 });
 
 export const workflowActions = {
-  clearGlobalLoadingMessage,
   setStepsData,
   spawnAllSteps,
   updateStepSummary,

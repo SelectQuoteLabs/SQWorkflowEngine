@@ -1,21 +1,18 @@
-import { assign, actions } from 'xstate';
+import { assign, StateFrom } from 'xstate';
 import { createModel } from 'xstate/lib/model';
+import { useSelector } from '@xstate/react';
 
-import { Workflow } from '../../types/workflow';
+import { Workflow } from 'types/workflow';
 import { WorkflowStep, StepSummary } from './workflow.types';
 import { workflowActions } from './workflow.actions';
-import { createSelector } from '../utils';
-
-type ErrorContext = { errorData: Error | null; message: string };
+import { createSelector } from 'machines/utils';
+import { useWorkflowService } from 'contexts/GlobalServices';
 
 type WorkflowContext = {
   applicationSubmitted: boolean;
   steps: WorkflowStep[];
   nextStepID: string;
   currentStepID: string;
-  globalLoadingMessage: string;
-  successMessage: string;
-  error: ErrorContext;
 };
 
 export const workflowModel = createModel(
@@ -24,18 +21,9 @@ export const workflowModel = createModel(
     steps: [],
     nextStepID: '',
     currentStepID: '',
-    globalLoadingMessage: '',
-    successMessage: '',
-    error: {
-      errorData: null,
-      message: '',
-    },
   } as WorkflowContext,
   {
     events: {
-      SET_GLOBAL_LOADING_MESSAGE: (message: string) => ({ message }),
-      SET_SUCCESS_MESSAGE: (message: string) => ({ message }),
-      SET_ERROR: (error: ErrorContext) => ({ error }),
       RECEIVE_WORKFLOW_DATA: (
         data: Workflow | null,
         applicationSubmitted: boolean,
@@ -54,41 +42,10 @@ const workflowMachine = workflowModel.createMachine({
   id: 'workflowMachine',
   initial: 'waitingForWorkflowData',
   context: workflowModel.initialContext,
-  on: {
-    SET_GLOBAL_LOADING_MESSAGE: {
-      actions: [
-        assign({
-          globalLoadingMessage: (_context, event) => event.message,
-        }),
-      ],
-    },
-    SET_SUCCESS_MESSAGE: {
-      actions: [
-        workflowModel.assign({
-          successMessage: (_context, event) => event.message,
-        }),
-      ],
-    },
-    SET_ERROR: {
-      actions: [
-        workflowModel.assign({
-          error: (_context, event) => {
-            const { error } = event;
-            return { errorData: error.errorData, message: error.message };
-          },
-        }),
-      ],
-    },
-  },
   states: {
     waitingForWorkflowData: {
       id: 'waitingForWorkflowData',
-      entry: [
-        actions.send({
-          type: 'SET_GLOBAL_LOADING_MESSAGE',
-          message: 'Loading Enrollment',
-        }),
-      ],
+      entry: ['entryWaitingForWorkflowData'],
       on: {
         RECEIVE_WORKFLOW_DATA: {
           target: 'workflowDataLoaded.idle',
@@ -102,13 +59,7 @@ const workflowMachine = workflowModel.createMachine({
           ],
         },
       },
-      exit: [
-        workflowActions.clearGlobalLoadingMessage,
-        actions.send({
-          type: 'SET_SUCCESS_MESSAGE',
-          message: 'Enrollment successfully loaded',
-        }),
-      ],
+      exit: ['exitWaitingForWorkflowData'],
     },
     workflowDataLoaded: {
       id: 'workflowDataLoaded',
@@ -136,24 +87,19 @@ const workflowMachine = workflowModel.createMachine({
 
 export default workflowMachine;
 
+export const useWorkflowSelector = <Type extends unknown>(
+  selector: (state: StateFrom<typeof workflowMachine>) => Type,
+): Type => {
+  const service = useWorkflowService();
+  return useSelector(service, selector);
+};
+
 const createWorkflowSelector = createSelector<typeof workflowMachine>();
 
 export const getSteps = createWorkflowSelector((state) => state.context.steps);
 
 export const getCurrentStepID = createWorkflowSelector(
   (state) => state.context.currentStepID,
-);
-
-export const getGlobalLoadingMessage = createWorkflowSelector(
-  (state) => state.context.globalLoadingMessage,
-);
-
-export const getSuccessMessage = createWorkflowSelector(
-  (state) => state.context.successMessage,
-);
-
-export const getErrorMessage = createWorkflowSelector(
-  (state) => state.context.error.message,
 );
 
 export const getIsWorkflowDataLoaded = createWorkflowSelector((state) =>
