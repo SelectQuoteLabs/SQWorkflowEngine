@@ -2,25 +2,25 @@ import { assign, DoneInvokeEvent } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 import { choose, respond } from 'xstate/lib/actions';
 
-import { ActionTypes } from 'types/actions';
+import { ActionTypes } from '../../types/actions';
 import {
   createSelector,
   createSelectorHook,
   hasActionInQueue,
-} from 'machines/utils';
+} from '../../machines/utils';
 import {
   ExtractQuestionEvent,
   QuestionContext,
   QuestionMachineRef,
 } from './question.types';
-import { DataSource } from 'types/questions';
-import { fetchWrapper } from 'utils/fetchWrapper';
+import { DataSource } from '../../types/questions';
+import { fetchWrapper } from '../../utils/fetchWrapper';
 import { questionActions } from './question.actions';
 import {
   EvaluatedConditional,
   evaluatorMachine,
   evaluatorModel,
-} from 'machines/evaluator.machine';
+} from '../../machines/evaluator.machine';
 
 export const questionModel = createModel(
   {

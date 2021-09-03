@@ -2,7 +2,7 @@ import { ContextFrom, EventFrom } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 import { choose, pure, send } from 'xstate/lib/actions';
 
-import { GroupConditional } from 'types/evaluations';
+import { GroupConditional } from '../types/evaluations';
 import { QuestionMachineRef } from './question/question.types';
 import {
   evaluateComparison,

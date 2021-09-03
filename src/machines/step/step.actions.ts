@@ -1,6 +1,6 @@
 import { actions, DoneInvokeEvent, spawn } from 'xstate';
 
-import { shallowCompare } from 'machines/utils';
+import { shallowCompare } from '../utils';
 import {
   ExtractStepEvent,
   Knockout,
@@ -8,12 +8,12 @@ import {
   StepEvent,
   StepQuestion,
 } from './step.types';
-import { StepTypes } from 'types/steps';
-import { EvaluationTypes } from 'types/evaluations';
-import { ExtractWorkflowEvent } from 'machines/workflow/workflow.types';
-import { textStepMachine } from 'machines/textStep.machine';
-import { questionModel } from 'machines/question/question.machine';
-import questionMachine from 'machines/question';
+import { StepTypes } from '../../types/steps';
+import { EvaluationTypes } from '../../types/evaluations';
+import { ExtractWorkflowEvent } from '../workflow/workflow.types';
+import { textStepMachine } from '../textStep.machine';
+import { questionModel } from '../question/question.machine';
+import questionMachine from '../question';
 
 /** The 'SUBMIT' event is sent with the form's values and the `stepSummary`, this action assigns those to the machine context */
 const setFormDetailsToContext = actions.assign<

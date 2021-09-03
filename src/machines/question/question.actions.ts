@@ -1,15 +1,15 @@
 import { actions, DoneInvokeEvent } from 'xstate';
 
-import { findActionInQueue } from 'machines/utils';
-import { ActionTypes, FailWorkflowAction } from 'types/actions';
+import { findActionInQueue } from '../../machines/utils';
+import { ActionTypes, FailWorkflowAction } from '../../types/actions';
 import {
   ActionsQueueItem,
   ExtractQuestionEvent,
   QuestionContext,
   QuestionEvent,
 } from './question.types';
-import { FipsCode } from 'types/dataSource';
-import { ExtractStepEvent } from 'machines/step/step.types';
+import { FipsCode } from '../../types/dataSource';
+import { ExtractStepEvent } from '../../machines/step/step.types';
 
 /** Assigns the `value` from the event to the `value` in context */
 const updateValue = actions.assign<

@@ -1,16 +1,21 @@
 import { actions, spawn } from 'xstate';
 
-import { ActionTypes, NextStepAction } from 'types/actions';
-import { QuestionTypes } from 'types/questions';
-import { GroupStep, QuestionStep, TextStep, StepTypes } from 'types/steps';
+import { ActionTypes, NextStepAction } from '../../types/actions';
+import { QuestionTypes } from '../../types/questions';
+import {
+  GroupStep,
+  QuestionStep,
+  TextStep,
+  StepTypes,
+} from '../../types/steps';
 import {
   ChildStep,
   ExtractWorkflowEvent,
   WorkflowContext,
   WorkflowStep,
 } from './workflow.types';
-import stepMachine from 'machines/step';
-import { stepModel } from 'machines/step/step.machine';
+import stepMachine from '../step';
+import { stepModel } from '../step/step.machine';
 
 /**
  * Using the data returned from the invoked fetchWorkflow promise, create a steps array that includes all of the data needed for each

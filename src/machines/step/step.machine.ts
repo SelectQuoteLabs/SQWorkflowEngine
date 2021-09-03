@@ -8,18 +8,18 @@ import {
   UpdateMultipleStepsVisibilityAction,
   UpdateStepIsRequiredAction,
   UpdateStepVisibilityAction,
-} from 'types/actions';
-import { StepTypes } from 'types/steps';
+} from '../../types/actions';
+import { StepTypes } from '../../types/steps';
 import { Knockout, StepContext, StepEvent, StepQuestion } from './step.types';
 import {
   createSelector,
   createSelectorHook,
   ExtractModelEvent,
-} from 'machines/utils';
-import { findActionInQueue, hasActionInQueue } from 'machines/utils';
-import { ChildStep, StepSummary } from 'machines/workflow/workflow.types';
-import { ActionsQueueItem } from 'machines/question/question.types';
-import { syncFormValuesMachine } from 'machines/syncFormValues.machine';
+} from '../utils';
+import { findActionInQueue, hasActionInQueue } from '../utils';
+import { ChildStep, StepSummary } from '../workflow/workflow.types';
+import { ActionsQueueItem } from '../question/question.types';
+import { syncFormValuesMachine } from '../syncFormValues.machine';
 import { stepActions } from './step.actions';
 
 export const stepModel = createModel(

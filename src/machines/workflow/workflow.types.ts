@@ -1,10 +1,11 @@
+import { ContextFrom, EventFrom } from 'xstate';
+
 import {
   StepQuestion,
   StepText,
   StepMachineRef,
-} from 'machines/step/step.types';
-import { ExtractModelEvent } from 'machines/utils';
-import { ContextFrom, EventFrom } from 'xstate';
+} from '../step/step.types';
+import { ExtractModelEvent } from '../utils';
 import { workflowModel } from './workflow.machine';
 
 export type WorkflowContext = ContextFrom<typeof workflowModel>;

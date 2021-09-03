@@ -8,8 +8,8 @@ import {
   GroupConditional,
   QuestionConditional,
   AlwaysTrueConditional,
-} from 'types/evaluations';
-import { Action } from 'types/actions';
+} from '../types/evaluations';
+import { Action } from '../types/actions';
 import questionMachine from './question';
 import { evaluateComparison } from './utils';
 import {

@@ -1,4 +1,4 @@
-import { ConditionalActions } from './evaluations';
+import { ConditionalAction } from './evaluations';
 import { Question } from './questions';
 import { UnionFromKeys } from './utils';
 
@@ -13,7 +13,7 @@ export type StepType = UnionFromKeys<typeof StepTypes>;
 interface StepBase<Type extends StepType> {
   id: string;
   stepType: Type;
-  onCompleteConditionalActions: ConditionalActions[] | null;
+  onCompleteConditionalActions: ConditionalAction[] | null;
 }
 
 export interface QuestionStep extends StepBase<'question'> {

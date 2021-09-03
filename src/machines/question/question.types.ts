@@ -1,19 +1,14 @@
-import {
-  ActorRefFrom,
-  EventFrom,
-  EventObject,
-  StateMachine,
-  StateSchema,
-} from 'xstate';
+import { ActorRefFrom, EventFrom, StateMachine, StateSchema } from 'xstate';
 
-import { Action } from 'types/actions';
-import { ExtractModelEvent } from 'machines/utils';
+import { Action } from '../../types/actions';
+import { ExtractModelEvent } from '../../machines/utils';
 import { questionModel } from './question.machine';
-import { ConditionalAction } from 'types/evaluations';
-import { DataSource, MultipleChoiceOptionValue } from 'types/questions';
+import { ConditionalAction } from '../../types/evaluations';
+import { DataSource, MultipleChoiceOptionValue } from '../../types/questions';
 
 export type QuestionMachineRef = ActorRefFrom<
-  StateMachine<QuestionContext, StateSchema<QuestionContext>, EventObject>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StateMachine<QuestionContext, StateSchema<QuestionContext>, any>
 >;
 
 export type QuestionContext = {

@@ -2,10 +2,10 @@ import { assign } from 'xstate';
 import { createModel } from 'xstate/lib/model';
 // import { useSelector } from '@xstate/react';
 
-import { Workflow } from 'types/workflow';
+import { Workflow } from '../../types/workflow';
 import { WorkflowStep, StepSummary } from './workflow.types';
 import { workflowActions } from './workflow.actions';
-import { createSelector } from 'machines/utils';
+import { createSelector } from '../../machines/utils';
 // import { useWorkflowService } from 'contexts/GlobalServices';
 
 type WorkflowContext = {
