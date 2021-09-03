@@ -19,7 +19,7 @@ import {
 import { findActionInQueue, hasActionInQueue } from 'machines/utils';
 import { ChildStep, StepSummary } from 'machines/workflow/workflow.types';
 import { ActionsQueueItem } from 'machines/question/question.types';
-import { syncFormValuesMachine } from 'machines/syncFormValuesMachine';
+import { syncFormValuesMachine } from 'machines/syncFormValues.machine';
 import { stepActions } from './step.actions';
 
 export const stepModel = createModel(
