@@ -1,12 +1,12 @@
-import { assign, StateFrom } from 'xstate';
+import { assign } from 'xstate';
 import { createModel } from 'xstate/lib/model';
-import { useSelector } from '@xstate/react';
+// import { useSelector } from '@xstate/react';
 
 import { Workflow } from 'types/workflow';
 import { WorkflowStep, StepSummary } from './workflow.types';
 import { workflowActions } from './workflow.actions';
 import { createSelector } from 'machines/utils';
-import { useWorkflowService } from 'contexts/GlobalServices';
+// import { useWorkflowService } from 'contexts/GlobalServices';
 
 type WorkflowContext = {
   applicationSubmitted: boolean;
@@ -87,12 +87,12 @@ const workflowMachine = workflowModel.createMachine({
 
 export default workflowMachine;
 
-export const useWorkflowSelector = <Type extends unknown>(
-  selector: (state: StateFrom<typeof workflowMachine>) => Type,
-): Type => {
-  const service = useWorkflowService();
-  return useSelector(service, selector);
-};
+// export const useWorkflowSelector = <Type extends unknown>(
+//   selector: (state: StateFrom<typeof workflowMachine>) => Type,
+// ): Type => {
+//   const service = useWorkflowService();
+//   return useSelector(service, selector);
+// };
 
 const createWorkflowSelector = createSelector<typeof workflowMachine>();
 
