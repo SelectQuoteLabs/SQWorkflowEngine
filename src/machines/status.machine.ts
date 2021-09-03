@@ -1,8 +1,11 @@
-import { send, StateFrom } from 'xstate';
+import {
+  send,
+  // StateFrom
+} from 'xstate';
 import { createModel } from 'xstate/lib/model';
-import { useSelector } from '@xstate/react';
+// import { useSelector } from '@xstate/react';
 
-import { useStatusService } from 'contexts/GlobalServices';
+// import { useStatusService } from 'contexts/GlobalServices';
 import { createSelector } from './utils';
 
 type StatusContext = {
@@ -67,12 +70,12 @@ export const statusMachine = statusModel.createMachine({
   },
 });
 
-export const useStatusSelector = <Type extends unknown>(
-  selector: (state: StateFrom<typeof statusMachine>) => Type,
-): Type => {
-  const service = useStatusService();
-  return useSelector(service, selector);
-};
+// export const useStatusSelector = <Type extends unknown>(
+//   selector: (state: StateFrom<typeof statusMachine>) => Type,
+// ): Type => {
+//   const service = useStatusService();
+//   return useSelector(service, selector);
+// };
 
 const createStatusSelector = createSelector<typeof statusMachine>();
 
@@ -88,30 +91,30 @@ export const getErrorMessage = createStatusSelector(
   (state) => state.context.errorMessage,
 );
 
-export const useStatusDispatch = (): {
-  setGlobalLoadingMessage: (message: string) => void;
-  setSuccessMessage: (message: string) => void;
-  setErrorMessage: (message: string) => void;
-} => {
-  const statusService = useStatusService();
+// export const useStatusDispatch = (): {
+//   setGlobalLoadingMessage: (message: string) => void;
+//   setSuccessMessage: (message: string) => void;
+//   setErrorMessage: (message: string) => void;
+// } => {
+//   const statusService = useStatusService();
 
-  const setGlobalLoadingMessage = (message: string): void =>
-    statusService.send({
-      type: 'SET_GLOBAL_LOADING_MESSAGE',
-      message,
-    });
-  const setSuccessMessage = (message: string): void =>
-    statusService.send({
-      type: 'SET_TOAST_MESSAGE',
-      toastType: 'successMessage',
-      message,
-    });
-  const setErrorMessage = (message: string): void =>
-    statusService.send({
-      type: 'SET_TOAST_MESSAGE',
-      toastType: 'errorMessage',
-      message,
-    });
+//   const setGlobalLoadingMessage = (message: string): void =>
+//     statusService.send({
+//       type: 'SET_GLOBAL_LOADING_MESSAGE',
+//       message,
+//     });
+//   const setSuccessMessage = (message: string): void =>
+//     statusService.send({
+//       type: 'SET_TOAST_MESSAGE',
+//       toastType: 'successMessage',
+//       message,
+//     });
+//   const setErrorMessage = (message: string): void =>
+//     statusService.send({
+//       type: 'SET_TOAST_MESSAGE',
+//       toastType: 'errorMessage',
+//       message,
+//     });
 
-  return { setGlobalLoadingMessage, setSuccessMessage, setErrorMessage };
-};
+//   return { setGlobalLoadingMessage, setSuccessMessage, setErrorMessage };
+// };
